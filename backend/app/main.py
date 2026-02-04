@@ -13,6 +13,9 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.api.agents import router as agents_router
+from app.api.tasks import router as tasks_router
+from app.api.connections import router as connections_router
+from app.api.graphs import router as graphs_router, executions_router
 
 
 @asynccontextmanager
@@ -51,6 +54,10 @@ app.add_middleware(
 
 # Register routers
 app.include_router(agents_router, prefix="/api")
+app.include_router(tasks_router, prefix="/api")
+app.include_router(connections_router, prefix="/api")
+app.include_router(graphs_router, prefix="/api")
+app.include_router(executions_router, prefix="/api")
 
 
 @app.get("/")
@@ -61,6 +68,14 @@ async def root():
         "version": settings.VERSION,
         "status": "operational",
         "theme": "Art Deco 1920s Telephonic Exchange",
+        "endpoints": {
+            "docs": "/api/docs",
+            "agents": "/api/agents",
+            "tasks": "/api/tasks",
+            "connections": "/api/connections",
+            "graphs": "/api/graphs",
+            "executions": "/api/executions",
+        }
     }
 
 
