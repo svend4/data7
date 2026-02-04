@@ -1,14 +1,14 @@
 """
 Agent API Endpoints
-CRUD operations for agents
+CRUD operations for agents with database persistence
 Based on TECHNICAL_SPEC_PART3_API.md
 """
 
-from typing import List, Dict
-from fastapi import APIRouter, HTTPException, status
+from typing import List
+from fastapi import APIRouter, HTTPException, status, Depends
 
 from app.domain.entities import Agent
-from app.domain.value_objects import AgentCapability, PerformanceMetrics, Vector3
+from app.domain.value_objects import AgentCapability, AgentStatus, Vector3
 from app.schemas.agent import (
     AgentCreateRequest,
     AgentUpdateRequest,
@@ -16,10 +16,8 @@ from app.schemas.agent import (
     AgentListResponse,
     AgentStatsResponse,
 )
-
-# In-memory storage for MVP
-# TODO: Replace with database in Phase 1
-agents_db: Dict[str, Agent] = {}
+from app.infrastructure.repositories import AgentRepository
+from app.core.dependencies import get_agent_repository
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -63,7 +61,10 @@ def agent_to_response(agent: Agent) -> AgentResponse:
     summary="Create Agent",
     description="Register a new agent in the switchboard system"
 )
-async def create_agent(request: AgentCreateRequest) -> AgentResponse:
+async def create_agent(
+    request: AgentCreateRequest,
+    repo: AgentRepository = Depends(get_agent_repository)
+) -> AgentResponse:
     """Create a new agent"""
     # Convert schema to domain objects
     capabilities = [
@@ -92,8 +93,16 @@ async def create_agent(request: AgentCreateRequest) -> AgentResponse:
         metadata=request.metadata,
     )
 
-    # Store in database
-    agents_db[agent.id] = agent
+    # Save to database
+    try:
+        agent_model = await repo.create_agent(agent)
+        # Convert back to domain entity
+        agent = repo.to_domain(agent_model)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create agent: {str(e)}"
+        )
 
     return agent_to_response(agent)
 
@@ -104,10 +113,20 @@ async def create_agent(request: AgentCreateRequest) -> AgentResponse:
     summary="List Agents",
     description="Get all registered agents"
 )
-async def list_agents() -> AgentListResponse:
+async def list_agents(
+    repo: AgentRepository = Depends(get_agent_repository)
+) -> AgentListResponse:
     """List all agents"""
-    agents = [agent_to_response(agent) for agent in agents_db.values()]
-    return AgentListResponse(agents=agents, total=len(agents))
+    try:
+        agent_models = await repo.get_all_with_capabilities()
+        agents = [repo.to_domain(model) for model in agent_models]
+        agent_responses = [agent_to_response(agent) for agent in agents]
+        return AgentListResponse(agents=agent_responses, total=len(agent_responses))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list agents: {str(e)}"
+        )
 
 
 @router.get(
@@ -116,15 +135,27 @@ async def list_agents() -> AgentListResponse:
     summary="Get Agent",
     description="Get agent by ID"
 )
-async def get_agent(agent_id: str) -> AgentResponse:
+async def get_agent(
+    agent_id: str,
+    repo: AgentRepository = Depends(get_agent_repository)
+) -> AgentResponse:
     """Get agent by ID"""
-    agent = agents_db.get(agent_id)
-    if not agent:
+    try:
+        agent_model = await repo.get_agent_with_capabilities(agent_id)
+        if not agent_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {agent_id} not found"
+            )
+        agent = repo.to_domain(agent_model)
+        return agent_to_response(agent)
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent {agent_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get agent: {str(e)}"
         )
-    return agent_to_response(agent)
 
 
 @router.put(
@@ -133,34 +164,57 @@ async def get_agent(agent_id: str) -> AgentResponse:
     summary="Update Agent",
     description="Update agent properties"
 )
-async def update_agent(agent_id: str, request: AgentUpdateRequest) -> AgentResponse:
+async def update_agent(
+    agent_id: str,
+    request: AgentUpdateRequest,
+    repo: AgentRepository = Depends(get_agent_repository)
+) -> AgentResponse:
     """Update agent"""
-    agent = agents_db.get(agent_id)
-    if not agent:
+    try:
+        # Check if agent exists
+        agent_model = await repo.get_agent_with_capabilities(agent_id)
+        if not agent_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {agent_id} not found"
+            )
+
+        # Prepare update data
+        update_data = {}
+
+        if request.status:
+            update_data["status"] = request.status
+
+        if request.position:
+            update_data["position_x"] = request.position.x
+            update_data["position_y"] = request.position.y
+            update_data["position_z"] = request.position.z
+
+        if request.metadata is not None:
+            # Merge metadata
+            current_metadata = agent_model.metadata or {}
+            current_metadata.update(request.metadata)
+            update_data["metadata"] = current_metadata
+
+        # Update in database
+        if update_data:
+            from datetime import datetime
+            update_data["updated_at"] = datetime.utcnow()
+            agent_model = await repo.update(agent_id, **update_data)
+
+            # Reload with capabilities
+            agent_model = await repo.get_agent_with_capabilities(agent_id)
+
+        agent = repo.to_domain(agent_model)
+        return agent_to_response(agent)
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent {agent_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update agent: {str(e)}"
         )
-
-    # Update fields
-    if request.status:
-        from app.domain.value_objects import AgentStatus
-        agent.status = AgentStatus(request.status)
-
-    if request.position:
-        agent.position = Vector3(
-            x=request.position.x,
-            y=request.position.y,
-            z=request.position.z,
-        )
-
-    if request.metadata is not None:
-        agent.metadata.update(request.metadata)
-
-    from datetime import datetime
-    agent.updated_at = datetime.utcnow()
-
-    return agent_to_response(agent)
 
 
 @router.delete(
@@ -169,14 +223,30 @@ async def update_agent(agent_id: str, request: AgentUpdateRequest) -> AgentRespo
     summary="Delete Agent",
     description="Remove agent from system"
 )
-async def delete_agent(agent_id: str):
+async def delete_agent(
+    agent_id: str,
+    repo: AgentRepository = Depends(get_agent_repository)
+):
     """Delete agent"""
-    if agent_id not in agents_db:
+    try:
+        # Check if agent exists
+        exists = await repo.exists(agent_id)
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {agent_id} not found"
+            )
+
+        # Delete from database
+        await repo.delete(agent_id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent {agent_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete agent: {str(e)}"
         )
-    del agents_db[agent_id]
 
 
 @router.get(
@@ -185,35 +255,15 @@ async def delete_agent(agent_id: str):
     summary="Agent Statistics",
     description="Get aggregate statistics for all agents"
 )
-async def get_agent_stats() -> AgentStatsResponse:
+async def get_agent_stats(
+    repo: AgentRepository = Depends(get_agent_repository)
+) -> AgentStatsResponse:
     """Get agent statistics"""
-    from app.domain.value_objects import AgentStatus
-
-    agents = list(agents_db.values())
-    total = len(agents)
-
-    if total == 0:
-        return AgentStatsResponse(
-            total_agents=0,
-            idle_agents=0,
-            busy_agents=0,
-            offline_agents=0,
-            avg_success_rate=0.0,
-            avg_response_time=0.0,
+    try:
+        stats = await repo.get_statistics()
+        return AgentStatsResponse(**stats)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get statistics: {str(e)}"
         )
-
-    idle = sum(1 for a in agents if a.status == AgentStatus.IDLE)
-    busy = sum(1 for a in agents if a.status == AgentStatus.BUSY)
-    offline = sum(1 for a in agents if a.status == AgentStatus.OFFLINE)
-
-    avg_success = sum(a.metrics.success_rate for a in agents) / total
-    avg_response = sum(a.metrics.avg_response_time for a in agents) / total
-
-    return AgentStatsResponse(
-        total_agents=total,
-        idle_agents=idle,
-        busy_agents=busy,
-        offline_agents=offline,
-        avg_success_rate=avg_success,
-        avg_response_time=avg_response,
-    )
