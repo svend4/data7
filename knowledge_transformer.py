@@ -11,12 +11,27 @@ Author: AI Research Assistant
 Date: 2026-02-04
 """
 
-import numpy as np
 from typing import List, Dict, Set, Tuple, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
 import json
 import re
+
+# Optional numpy import
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    # Fallback implementations
+    class np:
+        @staticmethod
+        def mean(lst):
+            return sum(lst) / len(lst) if lst else 0
+
+        @staticmethod
+        def argmax(lst):
+            return max(range(len(lst)), key=lambda i: lst[i]) if lst else 0
 
 
 # ============================================================================
@@ -556,13 +571,557 @@ class WikiAggregator:
 
 
 # ============================================================================
+# WIKI DECOMPOSER
+# ============================================================================
+
+class WikiDecomposer:
+    """Декомпозиция энциклопедических статей в факты"""
+
+    def __init__(self, use_ml: bool = False):
+        """
+        Parameters:
+        -----------
+        use_ml: использовать NLP для извлечения триплетов
+        """
+        self.use_ml = use_ml
+
+    def decompose(self, wiki_text: str, metadata: Dict = None) -> List[Fact]:
+        """
+        Декомпозировать статью Википедии в факты (SPO триплеты)
+
+        Parameters:
+        -----------
+        wiki_text: текст статьи
+        metadata: метаданные (источник, дата)
+
+        Returns:
+        --------
+        facts: список фактов (Subject-Predicate-Object триплетов)
+        """
+        # Шаг 1: Разбиение на предложения
+        sentences = self._split_into_sentences(wiki_text)
+
+        # Шаг 2: Извлечение триплетов
+        facts = []
+        for sentence in sentences:
+            triplets = self._extract_triplets(sentence)
+
+            for subj, pred, obj in triplets:
+                fact = Fact(
+                    subject=subj,
+                    predicate=pred,
+                    object=obj,
+                    certainty=0.9,
+                    sources=[metadata.get('source', 'wikipedia') if metadata else 'wikipedia'],
+                    context=sentence
+                )
+                facts.append(fact)
+
+        # Шаг 3: Дедупликация
+        facts = self._deduplicate_facts(facts)
+
+        return facts
+
+    def _split_into_sentences(self, text: str) -> List[str]:
+        """Разбить текст на предложения"""
+        # Простое разбиение по точкам
+        sentences = re.split(r'[.!?]+', text)
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+        return sentences
+
+    def _extract_triplets(self, sentence: str) -> List[Tuple[str, str, str]]:
+        """
+        Извлечь SPO триплеты из предложения
+
+        Использует простые паттерны и эвристики
+        """
+        triplets = []
+
+        # Паттерн 1: X is Y
+        pattern1 = r'([A-Z][a-zA-Z\s]+?)\s+(?:is|are)\s+([a-z].*?)(?:\.|,|$)'
+        matches = re.findall(pattern1, sentence)
+        for subj, obj in matches:
+            triplets.append((subj.strip(), "is_a", obj.strip()))
+
+        # Паттерн 2: X has Y
+        pattern2 = r'([A-Z][a-zA-Z\s]+?)\s+(?:has|have)\s+([a-z].*?)(?:\.|,|$)'
+        matches = re.findall(pattern2, sentence)
+        for subj, obj in matches:
+            triplets.append((subj.strip(), "has", obj.strip()))
+
+        # Паттерн 3: X causes Y
+        pattern3 = r'([A-Z][a-zA-Z\s]+?)\s+(?:causes?|leads? to)\s+([a-z].*?)(?:\.|,|$)'
+        matches = re.findall(pattern3, sentence)
+        for subj, obj in matches:
+            triplets.append((subj.strip(), "causes", obj.strip()))
+
+        # Паттерн 4: X used for Y
+        pattern4 = r'([A-Z][a-zA-Z\s]+?)\s+(?:used for|applied to)\s+([a-z].*?)(?:\.|,|$)'
+        matches = re.findall(pattern4, sentence)
+        for subj, obj in matches:
+            triplets.append((subj.strip(), "used_for", obj.strip()))
+
+        # Если ничего не найдено, извлекаем субъект и первое существительное
+        if not triplets:
+            words = sentence.split()
+            if len(words) >= 3:
+                # Простая эвристика: первое слово с заглавной - субъект
+                subj = words[0]
+                if subj[0].isupper() and len(subj) > 2:
+                    # Ищем следующее существительное
+                    for i, word in enumerate(words[1:], 1):
+                        if len(word) > 3 and word[0].islower():
+                            obj = ' '.join(words[i:min(i+5, len(words))])
+                            triplets.append((subj, "related_to", obj))
+                            break
+
+        return triplets
+
+    def _deduplicate_facts(self, facts: List[Fact]) -> List[Fact]:
+        """Удалить дубликаты фактов"""
+        seen = set()
+        unique_facts = []
+
+        for fact in facts:
+            key = (fact.subject.lower(), fact.predicate, fact.object.lower())
+            if key not in seen:
+                seen.add(key)
+                unique_facts.append(fact)
+
+        return unique_facts
+
+
+# ============================================================================
+# DISSERTATION SYNTHESIZER
+# ============================================================================
+
+class DissertationSynthesizer:
+    """Синтез новых идей диссертаций из фактов энциклопедии"""
+
+    def __init__(self, min_novelty: float = 0.6):
+        """
+        Parameters:
+        -----------
+        min_novelty: минимальный порог новизны для идеи
+        """
+        self.min_novelty = min_novelty
+
+    def synthesize(self, facts: List[Fact], domain: str = "general") -> List[Dict]:
+        """
+        Синтезировать идеи диссертаций из фактов
+
+        Parameters:
+        -----------
+        facts: факты из энциклопедий
+        domain: целевая область исследования
+
+        Returns:
+        --------
+        proposals: список предложений диссертаций с оценками
+        """
+        # Шаг 1: Построить граф знаний из фактов
+        knowledge_graph = self._build_graph_from_facts(facts)
+
+        # Шаг 2: Найти исследовательские пробелы
+        gaps = self._identify_research_gaps(knowledge_graph)
+
+        # Шаг 3: Сгенерировать идеи
+        proposals = []
+        for gap in gaps:
+            proposal = self._generate_proposal(gap, knowledge_graph, facts)
+            if proposal['novelty'] >= self.min_novelty:
+                proposals.append(proposal)
+
+        # Шаг 4: Ранжировать по качеству
+        proposals = self._rank_proposals(proposals)
+
+        return proposals
+
+    def _build_graph_from_facts(self, facts: List[Fact]) -> KnowledgeGraph:
+        """Построить граф знаний из фактов"""
+        graph = KnowledgeGraph()
+
+        # Создать концепты из субъектов и объектов
+        concept_map = {}
+
+        for fact in facts:
+            # Субъект
+            if fact.subject not in concept_map:
+                concept = Concept(
+                    id=f"c_{hash(fact.subject) % 100000}",
+                    name=fact.subject,
+                    definition=f"Concept: {fact.subject}",
+                    domain="extracted",
+                    sources=fact.sources
+                )
+                concept_map[fact.subject] = concept
+                graph.add_concept(concept)
+
+            # Объект
+            if fact.object not in concept_map:
+                concept = Concept(
+                    id=f"c_{hash(fact.object) % 100000}",
+                    name=fact.object,
+                    definition=f"Concept: {fact.object}",
+                    domain="extracted",
+                    sources=fact.sources
+                )
+                concept_map[fact.object] = concept
+                graph.add_concept(concept)
+
+            # Связь
+            relation = Relation(
+                source=concept_map[fact.subject].id,
+                target=concept_map[fact.object].id,
+                relation_type=fact.predicate,
+                strength=fact.certainty
+            )
+            graph.add_relation(relation)
+
+        return graph
+
+    def _identify_research_gaps(self, graph: KnowledgeGraph) -> List[Dict]:
+        """
+        Идентифицировать исследовательские пробелы
+
+        Типы пробелов:
+        1. Слабые связи (низкая центральность)
+        2. Отсутствующие связи (концепты рядом, но не связаны)
+        3. Неисследованные комбинации
+        """
+        gaps = []
+
+        # Тип 1: Концепты с низкой центральностью
+        centrality = graph.compute_centrality()
+        low_centrality_concepts = [
+            cid for cid, score in centrality.items()
+            if score < np.mean(list(centrality.values())) * 0.5
+        ]
+
+        for cid in low_centrality_concepts[:10]:  # Топ 10
+            concept = graph.concepts[cid]
+            gaps.append({
+                'type': 'under_researched',
+                'concept': concept,
+                'centrality': centrality[cid],
+                'neighbors': list(graph.get_neighbors(cid))
+            })
+
+        # Тип 2: Отсутствующие связи между близкими концептами
+        # Находим пары концептов, которые имеют общих соседей, но не связаны напрямую
+        concept_ids = list(graph.concepts.keys())
+        for i, cid1 in enumerate(concept_ids[:50]):  # Ограничиваем для производительности
+            for cid2 in concept_ids[i+1:i+20]:
+                if cid2 not in graph.get_neighbors(cid1):
+                    # Проверяем общих соседей
+                    common = graph.get_neighbors(cid1) & graph.get_neighbors(cid2)
+                    if len(common) >= 2:  # Есть общие соседи
+                        gaps.append({
+                            'type': 'missing_link',
+                            'concept1': graph.concepts[cid1],
+                            'concept2': graph.concepts[cid2],
+                            'common_neighbors': len(common),
+                            'bridge_concepts': [graph.concepts[c] for c in list(common)[:3]]
+                        })
+
+        return gaps
+
+    def _generate_proposal(self, gap: Dict, graph: KnowledgeGraph,
+                          facts: List[Fact]) -> Dict:
+        """Сгенерировать предложение диссертации из пробела"""
+        proposal = {
+            'gap_type': gap['type'],
+            'novelty': 0.0,
+            'impact': 0.0,
+            'feasibility': 0.0,
+            'title': '',
+            'description': '',
+            'research_questions': [],
+            'methodology': '',
+            'expected_contributions': []
+        }
+
+        if gap['type'] == 'under_researched':
+            concept = gap['concept']
+            proposal['title'] = f"Advanced Study of {concept.name}"
+            proposal['description'] = (
+                f"This research aims to deeply investigate {concept.name}, "
+                f"which is currently under-researched in the literature. "
+                f"Current centrality: {gap['centrality']:.3f}"
+            )
+            proposal['novelty'] = 0.7 + 0.3 * (1 - gap['centrality'])
+            proposal['impact'] = 0.5
+            proposal['feasibility'] = 0.8
+            proposal['research_questions'] = [
+                f"What are the fundamental properties of {concept.name}?",
+                f"How does {concept.name} interact with related concepts?",
+                f"What applications can be derived from {concept.name}?"
+            ]
+
+        elif gap['type'] == 'missing_link':
+            c1 = gap['concept1']
+            c2 = gap['concept2']
+            proposal['title'] = f"Bridging {c1.name} and {c2.name}"
+            proposal['description'] = (
+                f"This research explores the relationship between {c1.name} and {c2.name}, "
+                f"which share {gap['common_neighbors']} common connections but lack direct research linking them."
+            )
+            proposal['novelty'] = 0.8
+            proposal['impact'] = 0.6 + 0.2 * min(gap['common_neighbors'] / 5, 1.0)
+            proposal['feasibility'] = 0.7
+            proposal['research_questions'] = [
+                f"What is the nature of the relationship between {c1.name} and {c2.name}?",
+                f"Can insights from {c1.name} be applied to {c2.name}?",
+                f"What new applications emerge from combining {c1.name} and {c2.name}?"
+            ]
+            proposal['methodology'] = "Comparative analysis, experimental validation, theoretical framework development"
+
+        # Вычислить общую оценку
+        proposal['overall_score'] = (
+            0.4 * proposal['novelty'] +
+            0.4 * proposal['impact'] +
+            0.2 * proposal['feasibility']
+        )
+
+        return proposal
+
+    def _rank_proposals(self, proposals: List[Dict]) -> List[Dict]:
+        """Ранжировать предложения по качеству"""
+        proposals.sort(key=lambda p: p['overall_score'], reverse=True)
+        return proposals
+
+
+# ============================================================================
+# KNOWLEDGE RATIONALIZER
+# ============================================================================
+
+class KnowledgeRationalizer:
+    """
+    Система рационализации научного знания
+
+    Оптимизация представления знаний через:
+    1. Компрессию избыточности
+    2. Максимизацию покрытия
+    3. Минимизацию сложности
+    """
+
+    def __init__(self, compression_target: float = 0.5):
+        """
+        Parameters:
+        -----------
+        compression_target: целевой коэффициент компрессии (0-1)
+        """
+        self.compression_target = compression_target
+
+    def rationalize(self, knowledge_graph: KnowledgeGraph,
+                   optimization_goal: str = "balanced") -> Dict:
+        """
+        Рационализировать граф знаний
+
+        Parameters:
+        -----------
+        knowledge_graph: исходный граф знаний
+        optimization_goal: цель оптимизации
+            - "compression": максимальная компрессия
+            - "coverage": максимальное покрытие
+            - "balanced": баланс
+
+        Returns:
+        --------
+        result: оптимизированный граф и метрики
+        """
+        # Шаг 1: Анализ текущего состояния
+        initial_metrics = self._compute_metrics(knowledge_graph)
+
+        # Шаг 2: Идентификация избыточности
+        redundancies = self._identify_redundancies(knowledge_graph)
+
+        # Шаг 3: Оптимизация структуры
+        optimized_graph = self._optimize_structure(
+            knowledge_graph,
+            redundancies,
+            optimization_goal
+        )
+
+        # Шаг 4: Вычисление финальных метрик
+        final_metrics = self._compute_metrics(optimized_graph)
+
+        # Шаг 5: Формирование результата
+        result = {
+            'optimized_graph': optimized_graph,
+            'initial_metrics': initial_metrics,
+            'final_metrics': final_metrics,
+            'redundancies_removed': len(redundancies),
+            'compression_ratio': final_metrics['size'] / initial_metrics['size'],
+            'coverage_preserved': final_metrics['coverage'] / initial_metrics['coverage'],
+            'transformations': []
+        }
+
+        return result
+
+    def _compute_metrics(self, graph: KnowledgeGraph) -> Dict:
+        """Вычислить метрики графа знаний"""
+        n_concepts = len(graph.concepts)
+        n_relations = len(graph.relations)
+
+        # Размер (сложность)
+        size = n_concepts + n_relations
+
+        # Покрытие (связность)
+        if n_concepts > 0:
+            avg_degree = 2 * n_relations / n_concepts
+        else:
+            avg_degree = 0
+
+        # Центральность
+        centrality = graph.compute_centrality()
+        avg_centrality = np.mean(list(centrality.values())) if centrality else 0
+
+        # Избыточность (транзитивные связи)
+        redundancy = self._compute_redundancy(graph)
+
+        return {
+            'size': size,
+            'concepts': n_concepts,
+            'relations': n_relations,
+            'avg_degree': avg_degree,
+            'avg_centrality': avg_centrality,
+            'redundancy': redundancy,
+            'coverage': avg_degree * avg_centrality  # Комбинированная метрика
+        }
+
+    def _compute_redundancy(self, graph: KnowledgeGraph) -> float:
+        """Вычислить уровень избыточности"""
+        # Подсчет транзитивных связей
+        redundant_count = 0
+        total_relations = len(graph.relations)
+
+        if total_relations == 0:
+            return 0.0
+
+        # Для каждой связи A->C проверяем, есть ли путь A->B->C
+        for relation in graph.relations[:min(100, total_relations)]:  # Ограничиваем для производительности
+            source = relation.source
+            target = relation.target
+
+            # Ищем промежуточные узлы
+            for intermediate in graph.get_neighbors(source):
+                if intermediate != target and target in graph.get_neighbors(intermediate):
+                    redundant_count += 1
+                    break
+
+        return redundant_count / min(100, total_relations)
+
+    def _identify_redundancies(self, graph: KnowledgeGraph) -> List[Dict]:
+        """Идентифицировать избыточные элементы"""
+        redundancies = []
+
+        # Тип 1: Транзитивные связи
+        for relation in graph.relations:
+            source = relation.source
+            target = relation.target
+
+            # Проверяем существование обходного пути
+            for intermediate in graph.get_neighbors(source):
+                if intermediate != target and target in graph.get_neighbors(intermediate):
+                    redundancies.append({
+                        'type': 'transitive_relation',
+                        'relation': relation,
+                        'path': [source, intermediate, target]
+                    })
+                    break
+
+        # Тип 2: Дублирующиеся концепты (похожие названия)
+        concept_list = list(graph.concepts.values())
+        for i, c1 in enumerate(concept_list):
+            for c2 in concept_list[i+1:]:
+                similarity = self._string_similarity(c1.name, c2.name)
+                if similarity > 0.85:  # Очень похожие
+                    redundancies.append({
+                        'type': 'duplicate_concept',
+                        'concept1': c1,
+                        'concept2': c2,
+                        'similarity': similarity
+                    })
+
+        return redundancies
+
+    def _string_similarity(self, s1: str, s2: str) -> float:
+        """Вычислить схожесть строк (простое Jaccard расстояние)"""
+        s1_lower = s1.lower()
+        s2_lower = s2.lower()
+
+        # Jaccard similarity по символьным биграммам
+        bigrams1 = set([s1_lower[i:i+2] for i in range(len(s1_lower)-1)])
+        bigrams2 = set([s2_lower[i:i+2] for i in range(len(s2_lower)-1)])
+
+        if not bigrams1 and not bigrams2:
+            return 1.0 if s1_lower == s2_lower else 0.0
+
+        intersection = len(bigrams1 & bigrams2)
+        union = len(bigrams1 | bigrams2)
+
+        return intersection / union if union > 0 else 0.0
+
+    def _optimize_structure(self, graph: KnowledgeGraph,
+                           redundancies: List[Dict],
+                           goal: str) -> KnowledgeGraph:
+        """Оптимизировать структуру графа"""
+        # Создаем копию графа
+        optimized = KnowledgeGraph()
+
+        # Копируем все концепты
+        for concept in graph.concepts.values():
+            optimized.add_concept(concept)
+
+        # Создаем set из идентификаторов избыточных связей (source, target, type)
+        redundant_relation_ids = {
+            (r['relation'].source, r['relation'].target, r['relation'].relation_type)
+            for r in redundancies
+            if r['type'] == 'transitive_relation'
+        }
+
+        # Добавляем только неизбыточные связи
+        for relation in graph.relations:
+            relation_id = (relation.source, relation.target, relation.relation_type)
+
+            if goal == "compression":
+                # Агрессивное удаление избыточности
+                if relation_id not in redundant_relation_ids:
+                    optimized.add_relation(relation)
+            elif goal == "coverage":
+                # Сохраняем все связи
+                optimized.add_relation(relation)
+            else:  # balanced
+                # Удаляем только явную избыточность
+                if relation_id not in redundant_relation_ids or relation.strength > 0.8:
+                    optimized.add_relation(relation)
+
+        # Объединяем дублирующиеся концепты
+        duplicate_pairs = [
+            (r['concept1'], r['concept2'])
+            for r in redundancies
+            if r['type'] == 'duplicate_concept'
+        ]
+
+        for c1, c2 in duplicate_pairs:
+            if c1.id in optimized.concepts and c2.id in optimized.concepts:
+                # Объединяем источники
+                c1.sources.extend(c2.sources)
+                # Удаляем дубликат
+                del optimized.concepts[c2.id]
+
+        return optimized
+
+
+# ============================================================================
 # DEMO
 # ============================================================================
 
 def demo_dissertation_to_wiki():
     """Демонстрация: диссертация → энциклопедия"""
     print("=" * 80)
-    print("DEMO: Dissertation → Encyclopedia")
+    print("DEMO 1: Dissertation → Encyclopedia")
     print("=" * 80)
 
     # Пример текста диссертации
@@ -601,12 +1160,128 @@ def demo_dissertation_to_wiki():
     aggregator = WikiAggregator(target_length=500)
     article = aggregator.aggregate(segments, topic="Neural Networks")
 
-    print("\n3. Generated article:\n")
-    print(article)
+    print("\n3. Generated article preview:\n")
+    print(article[:500] + "...\n")
+
+    print("=" * 80)
+
+
+def demo_wiki_to_dissertation():
+    """Демонстрация: энциклопедия → диссертация"""
+    print("\n" + "=" * 80)
+    print("DEMO 2: Encyclopedia → Dissertation Proposals")
+    print("=" * 80)
+
+    # Пример статьи Википедии
+    wiki_text = """
+    Machine Learning is a field of artificial intelligence.
+    Machine Learning has applications in computer vision.
+    Deep Learning is a subset of machine learning.
+    Neural Networks are used for pattern recognition.
+    Supervised Learning requires labeled training data.
+    Unsupervised Learning works with unlabeled data.
+    Reinforcement Learning learns through trial and error.
+    """
+
+    # Декомпозиция
+    print("\n1. Decomposing Wikipedia article...")
+    wiki_decomposer = WikiDecomposer(use_ml=False)
+    facts = wiki_decomposer.decompose(
+        wiki_text,
+        metadata={'source': 'Wikipedia: Machine Learning'}
+    )
+
+    print(f"   Extracted {len(facts)} facts")
+    for i, fact in enumerate(facts[:5], 1):
+        print(f"   {i}. ({fact.subject}) --{fact.predicate}--> ({fact.object})")
+
+    # Синтез идей
+    print("\n2. Synthesizing dissertation proposals...")
+    synthesizer = DissertationSynthesizer(min_novelty=0.5)
+    proposals = synthesizer.synthesize(facts, domain="Machine Learning")
+
+    print(f"\n3. Generated {len(proposals)} proposals:\n")
+    for i, prop in enumerate(proposals[:3], 1):
+        print(f"   Proposal {i}: {prop['title']}")
+        print(f"   Novelty: {prop['novelty']:.2f}, Impact: {prop['impact']:.2f}")
+        print(f"   {prop['description'][:100]}...")
+        print()
+
+    print("=" * 80)
+
+
+def demo_rationalization():
+    """Демонстрация: рационализация знаний"""
+    print("\n" + "=" * 80)
+    print("DEMO 3: Knowledge Rationalization")
+    print("=" * 80)
+
+    # Создаем простой граф знаний
+    graph = KnowledgeGraph()
+
+    # Добавляем концепты
+    concepts_data = [
+        ("AI", "Artificial Intelligence"),
+        ("ML", "Machine Learning"),
+        ("DL", "Deep Learning"),
+        ("NN", "Neural Networks"),
+        ("CV", "Computer Vision")
+    ]
+
+    concept_map = {}
+    for cid, name in concepts_data:
+        concept = Concept(
+            id=cid,
+            name=name,
+            definition=f"Definition of {name}",
+            domain="AI"
+        )
+        graph.add_concept(concept)
+        concept_map[cid] = concept
+
+    # Добавляем связи (включая избыточные)
+    relations_data = [
+        ("AI", "ML", "includes"),
+        ("ML", "DL", "includes"),
+        ("AI", "DL", "includes"),  # Транзитивная (избыточная)
+        ("DL", "NN", "uses"),
+        ("NN", "CV", "applied_to"),
+        ("DL", "CV", "applied_to"),  # Транзитивная
+    ]
+
+    for src, tgt, rel_type in relations_data:
+        relation = Relation(
+            source=src,
+            target=tgt,
+            relation_type=rel_type,
+            strength=0.9
+        )
+        graph.add_relation(relation)
+
+    print("\n1. Initial knowledge graph:")
+    print(f"   Concepts: {len(graph.concepts)}")
+    print(f"   Relations: {len(graph.relations)}")
+
+    # Рационализация
+    print("\n2. Rationalizing...")
+    rationalizer = KnowledgeRationalizer(compression_target=0.5)
+    result = rationalizer.rationalize(graph, optimization_goal="compression")
+
+    print(f"\n3. Results:")
+    print(f"   Redundancies removed: {result['redundancies_removed']}")
+    print(f"   Compression ratio: {result['compression_ratio']:.2f}")
+    print(f"   Coverage preserved: {result['coverage_preserved']:.2f}")
+    print(f"   Final concepts: {result['final_metrics']['concepts']}")
+    print(f"   Final relations: {result['final_metrics']['relations']}")
 
     print("\n" + "=" * 80)
 
 
 if __name__ == "__main__":
-    print("Knowledge Transformation System - Demo\n")
+    print("Knowledge Transformation System - Complete Demo\n")
+
     demo_dissertation_to_wiki()
+    demo_wiki_to_dissertation()
+    demo_rationalization()
+
+    print("\n✓ All demos completed successfully!")
