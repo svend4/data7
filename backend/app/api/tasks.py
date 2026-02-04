@@ -1,11 +1,11 @@
 """
 Task API Endpoints
-CRUD operations for tasks
+CRUD operations for tasks with database persistence
 Based on TECHNICAL_SPEC_PART3_API.md
 """
 
-from typing import List, Dict, Optional
-from fastapi import APIRouter, HTTPException, status, Query
+from typing import List, Dict, Optional, Any
+from fastapi import APIRouter, HTTPException, status, Query, Depends
 
 from app.domain.entities import Task
 from app.domain.value_objects import TaskStatus
@@ -17,10 +17,8 @@ from app.schemas.task import (
     TaskCompleteRequest,
     TaskFailRequest,
 )
-
-# In-memory storage for MVP
-# TODO: Replace with database in Phase 1
-tasks_db: Dict[str, Task] = {}
+from app.infrastructure.repositories import TaskRepository
+from app.core.dependencies import get_task_repository
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -51,7 +49,10 @@ def task_to_response(task: Task) -> TaskResponse:
     summary="Create Task",
     description="Create a new task in the system"
 )
-async def create_task(request: TaskCreateRequest) -> TaskResponse:
+async def create_task(
+    request: TaskCreateRequest,
+    repo: TaskRepository = Depends(get_task_repository)
+) -> TaskResponse:
     """Create a new task"""
     # Create domain entity
     task = Task(
@@ -65,8 +66,15 @@ async def create_task(request: TaskCreateRequest) -> TaskResponse:
     if request.assigned_agent_id:
         task.assign_to(request.assigned_agent_id)
 
-    # Store in database
-    tasks_db[task.id] = task
+    # Save to database
+    try:
+        task_model = await repo.create_task(task)
+        task = repo.to_domain(task_model)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create task: {str(e)}"
+        )
 
     return task_to_response(task)
 
@@ -81,23 +89,36 @@ async def list_tasks(
     status_filter: Optional[str] = Query(None, alias="status"),
     assigned_agent_id: Optional[str] = Query(None),
     task_type: Optional[str] = Query(None),
+    repo: TaskRepository = Depends(get_task_repository)
 ) -> TaskListResponse:
     """List all tasks with optional filters"""
-    tasks = list(tasks_db.values())
+    try:
+        # Convert status string to enum if provided
+        status_enum = TaskStatus(status_filter) if status_filter else None
 
-    # Apply filters
-    if status_filter:
-        tasks = [t for t in tasks if t.status.value == status_filter]
-    if assigned_agent_id:
-        tasks = [t for t in tasks if t.assigned_agent_id == assigned_agent_id]
-    if task_type:
-        tasks = [t for t in tasks if t.task_type == task_type]
+        # Get tasks with filters
+        task_models = await repo.get_with_filters(
+            status=status_enum,
+            agent_id=assigned_agent_id,
+            task_type=task_type,
+            skip=0,
+            limit=100
+        )
 
-    # Sort by priority (high to low) then by created_at
-    tasks.sort(key=lambda t: (-t.priority, t.created_at))
+        tasks = [repo.to_domain(model) for model in task_models]
+        task_responses = [task_to_response(task) for task in tasks]
 
-    task_responses = [task_to_response(task) for task in tasks]
-    return TaskListResponse(tasks=task_responses, total=len(task_responses))
+        return TaskListResponse(tasks=task_responses, total=len(task_responses))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status value: {status_filter}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list tasks: {str(e)}"
+        )
 
 
 @router.get(
@@ -106,15 +127,27 @@ async def list_tasks(
     summary="Get Task",
     description="Get task by ID"
 )
-async def get_task(task_id: str) -> TaskResponse:
+async def get_task(
+    task_id: str,
+    repo: TaskRepository = Depends(get_task_repository)
+) -> TaskResponse:
     """Get task by ID"""
-    task = tasks_db.get(task_id)
-    if not task:
+    try:
+        task_model = await repo.get_by_id(task_id)
+        if not task_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+        task = repo.to_domain(task_model)
+        return task_to_response(task)
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get task: {str(e)}"
         )
-    return task_to_response(task)
 
 
 @router.put(
@@ -123,24 +156,50 @@ async def get_task(task_id: str) -> TaskResponse:
     summary="Start Task",
     description="Start task execution"
 )
-async def start_task(task_id: str, request: TaskStartRequest) -> TaskResponse:
+async def start_task(
+    task_id: str,
+    request: TaskStartRequest,
+    repo: TaskRepository = Depends(get_task_repository)
+) -> TaskResponse:
     """Start task execution"""
-    task = tasks_db.get(task_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found"
-        )
-
     try:
-        task.start()
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        # Get task
+        task_model = await repo.get_by_id(task_id)
+        if not task_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+
+        # Convert to domain entity
+        task = repo.to_domain(task_model)
+
+        # Start task (domain logic)
+        try:
+            task.start()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+
+        # Update in database
+        task_model = await repo.update(
+            task_id,
+            status=task.status.value,
+            started_at=task.started_at
         )
 
-    return task_to_response(task)
+        task = repo.to_domain(task_model)
+        return task_to_response(task)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start task: {str(e)}"
+        )
 
 
 @router.put(
@@ -149,24 +208,51 @@ async def start_task(task_id: str, request: TaskStartRequest) -> TaskResponse:
     summary="Complete Task",
     description="Mark task as completed with result"
 )
-async def complete_task(task_id: str, request: TaskCompleteRequest) -> TaskResponse:
+async def complete_task(
+    task_id: str,
+    request: TaskCompleteRequest,
+    repo: TaskRepository = Depends(get_task_repository)
+) -> TaskResponse:
     """Complete task with result"""
-    task = tasks_db.get(task_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found"
-        )
-
     try:
-        task.complete(request.result)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        # Get task
+        task_model = await repo.get_by_id(task_id)
+        if not task_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+
+        # Convert to domain entity
+        task = repo.to_domain(task_model)
+
+        # Complete task (domain logic)
+        try:
+            task.complete(request.result)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+
+        # Update in database
+        task_model = await repo.update(
+            task_id,
+            status=task.status.value,
+            result=task.result,
+            completed_at=task.completed_at
         )
 
-    return task_to_response(task)
+        task = repo.to_domain(task_model)
+        return task_to_response(task)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to complete task: {str(e)}"
+        )
 
 
 @router.put(
@@ -175,24 +261,51 @@ async def complete_task(task_id: str, request: TaskCompleteRequest) -> TaskRespo
     summary="Fail Task",
     description="Mark task as failed with error message"
 )
-async def fail_task(task_id: str, request: TaskFailRequest) -> TaskResponse:
+async def fail_task(
+    task_id: str,
+    request: TaskFailRequest,
+    repo: TaskRepository = Depends(get_task_repository)
+) -> TaskResponse:
     """Mark task as failed"""
-    task = tasks_db.get(task_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found"
-        )
-
     try:
-        task.fail(request.error)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        # Get task
+        task_model = await repo.get_by_id(task_id)
+        if not task_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+
+        # Convert to domain entity
+        task = repo.to_domain(task_model)
+
+        # Fail task (domain logic)
+        try:
+            task.fail(request.error)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+
+        # Update in database
+        task_model = await repo.update(
+            task_id,
+            status=task.status.value,
+            error=task.error,
+            completed_at=task.completed_at
         )
 
-    return task_to_response(task)
+        task = repo.to_domain(task_model)
+        return task_to_response(task)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to mark task as failed: {str(e)}"
+        )
 
 
 @router.delete(
@@ -201,14 +314,30 @@ async def fail_task(task_id: str, request: TaskFailRequest) -> TaskResponse:
     summary="Delete Task",
     description="Remove task from system"
 )
-async def delete_task(task_id: str):
+async def delete_task(
+    task_id: str,
+    repo: TaskRepository = Depends(get_task_repository)
+):
     """Delete task"""
-    if task_id not in tasks_db:
+    try:
+        # Check if task exists
+        exists = await repo.exists(task_id)
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+
+        # Delete from database
+        await repo.delete(task_id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete task: {str(e)}"
         )
-    del tasks_db[task_id]
 
 
 @router.get(
@@ -217,47 +346,15 @@ async def delete_task(task_id: str):
     summary="Task Statistics",
     description="Get aggregate statistics for all tasks"
 )
-async def get_task_stats() -> Dict:
+async def get_task_stats(
+    repo: TaskRepository = Depends(get_task_repository)
+) -> Dict[str, Any]:
     """Get task statistics"""
-    tasks = list(tasks_db.values())
-    total = len(tasks)
-
-    if total == 0:
-        return {
-            "total_tasks": 0,
-            "pending": 0,
-            "queued": 0,
-            "running": 0,
-            "completed": 0,
-            "failed": 0,
-            "avg_duration_seconds": 0.0,
-            "success_rate": 0.0,
-        }
-
-    pending = sum(1 for t in tasks if t.status == TaskStatus.PENDING)
-    queued = sum(1 for t in tasks if t.status == TaskStatus.QUEUED)
-    running = sum(1 for t in tasks if t.status == TaskStatus.RUNNING)
-    completed = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
-    failed = sum(1 for t in tasks if t.status == TaskStatus.FAILED)
-
-    # Calculate average duration for completed tasks
-    completed_tasks = [t for t in tasks if t.duration_seconds is not None]
-    avg_duration = (
-        sum(t.duration_seconds for t in completed_tasks) / len(completed_tasks)
-        if completed_tasks else 0.0
-    )
-
-    # Calculate success rate
-    finished_tasks = completed + failed
-    success_rate = completed / finished_tasks if finished_tasks > 0 else 0.0
-
-    return {
-        "total_tasks": total,
-        "pending": pending,
-        "queued": queued,
-        "running": running,
-        "completed": completed,
-        "failed": failed,
-        "avg_duration_seconds": round(avg_duration, 2),
-        "success_rate": round(success_rate, 4),
-    }
+    try:
+        stats = await repo.get_statistics()
+        return stats
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get statistics: {str(e)}"
+        )
