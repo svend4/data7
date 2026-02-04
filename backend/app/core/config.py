@@ -25,12 +25,15 @@ class Settings(BaseSettings):
     )
 
     # Database
-    DATABASE_URL: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/switchboard",
-        env="DATABASE_URL"
-    )
+    DATABASE_URL: Optional[str] = Field(default=None, env="DATABASE_URL")
+    POSTGRES_USER: str = Field(default="postgres", env="POSTGRES_USER")
+    POSTGRES_PASSWORD: str = Field(default="postgres", env="POSTGRES_PASSWORD")
+    POSTGRES_HOST: str = Field(default="localhost", env="POSTGRES_HOST")
+    POSTGRES_PORT: int = Field(default=5432, env="POSTGRES_PORT")
+    POSTGRES_DB: str = Field(default="switchboard", env="POSTGRES_DB")
     DB_POOL_SIZE: int = Field(default=20, env="DB_POOL_SIZE")
     DB_MAX_OVERFLOW: int = Field(default=10, env="DB_MAX_OVERFLOW")
+    DB_ECHO: bool = Field(default=False, env="DB_ECHO")  # Log SQL queries
 
     # Redis
     REDIS_URL: str = Field(

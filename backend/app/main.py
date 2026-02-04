@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.infrastructure import init_database, close_database
 from app.api.agents import router as agents_router
 from app.api.tasks import router as tasks_router
 from app.api.connections import router as connections_router
@@ -27,10 +28,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     print(f"📞 Version: {settings.VERSION}")
     print(f"🌐 Environment: {settings.ENVIRONMENT}")
 
+    # Initialize database
+    await init_database()
+    print("✅ Database initialized")
+
     yield
 
     # Shutdown
     print("🎭 Shutting down gracefully...")
+    await close_database()
+    print("✅ Database connections closed")
 
 
 app = FastAPI(
