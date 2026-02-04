@@ -1,0 +1,140 @@
+/* Art Deco 1920s Color Palette */
+:root {
+  --gold: #D4AF37;
+  --bronze: #CD7F32;
+  --black: #141414;
+  --cream: #FFFDD0;
+  --dark-gray: #2a2a2a;
+  --medium-gray: #4a4a4a;
+  --light-gray: #e0e0e0;
+
+  --bg-primary: var(--black);
+  --bg-secondary: var(--dark-gray);
+  --text-primary: var(--cream);
+  --text-secondary: var(--light-gray);
+  --accent-primary: var(--gold);
+  --accent-secondary: var(--bronze);
+
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 1rem;
+  --spacing-md: 1.5rem;
+  --spacing-lg: 2rem;
+  --spacing-xl: 3rem;
+
+  --border-radius: 4px;
+  --transition: all 0.3s ease;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Georgia', 'Times New Roman', serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--accent-primary);
+}
+
+h1 { font-size: 2.5rem; }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.5rem; }
+
+/* Links */
+a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+a:hover {
+  color: var(--accent-secondary);
+}
+
+/* Buttons */
+button {
+  font-family: inherit;
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: 2px solid var(--accent-primary);
+  background: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  font-size: 1rem;
+  transition: var(--transition);
+  letter-spacing: 0.05em;
+}
+
+button:hover {
+  background: var(--accent-primary);
+  color: var(--black);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Cards */
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-secondary);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Utility classes */
+.text-center { text-align: center; }
+.mb-sm { margin-bottom: var(--spacing-sm); }
+.mb-md { margin-bottom: var(--spacing-md); }
+.mt-md { margin-top: var(--spacing-md); }
+.p-md { padding: var(--spacing-md); }
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.status-idle {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+}
+
+.status-busy {
+  background: rgba(234, 179, 8, 0.2);
+  color: #eab308;
+  border: 1px solid #eab308;
+}
+
+.status-offline {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.status-error {
+  background: rgba(220, 38, 38, 0.2);
+  color: #dc2626;
+  border: 1px solid #dc2626;
+}

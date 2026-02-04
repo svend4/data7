@@ -1,0 +1,73 @@
+# Docker Compose for Switchboard System (Future)
+# Currently not used - MVP uses local development
+# Will be activated in Phase 1
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: switchboard-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: switchboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - switchboard-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: switchboard-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - switchboard-network
+
+  # Backend API (Future)
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: switchboard-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/switchboard
+      REDIS_URL: redis://redis:6379/0
+      DEBUG: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - switchboard-network
+
+  # Frontend (Future)
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: switchboard-frontend
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - switchboard-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  switchboard-network:
+    driver: bridge
