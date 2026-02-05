@@ -538,3 +538,184 @@ async def list_transformations() -> Dict:
             }
         }
     }
+
+
+# ============================================================================
+# Scientific Knowledge Transformation Endpoints
+# ============================================================================
+
+class WikiDecomposeRequest(BaseModel):
+    """Request for Wikipedia article decomposition"""
+    text: str
+    metadata: Dict = {}
+
+
+class FactResponse(BaseModel):
+    """Response for extracted fact"""
+    subject: str
+    predicate: str
+    object: str
+    certainty: float
+    sources: List[str] = []
+    context: str = ""
+
+
+class WikiDecomposeResponse(BaseModel):
+    """Response for Wikipedia decomposition"""
+    facts: List[FactResponse]
+    total_facts: int
+    metadata: Dict = {}
+
+
+class DissertationSynthesizeRequest(BaseModel):
+    """Request for dissertation synthesis"""
+    facts: List[Dict]  # List of fact dicts
+    domain: str = "general"
+    min_novelty: float = 0.5
+
+
+class ProposalResponse(BaseModel):
+    """Response for dissertation proposal"""
+    title: str
+    description: str
+    novelty: float
+    impact: float
+    feasibility: float
+    gap_type: str
+    research_questions: List[str]
+    methodology: str = ""
+    expected_contributions: List[str]
+
+
+class DissertationSynthesizeResponse(BaseModel):
+    """Response for dissertation synthesis"""
+    proposals: List[ProposalResponse]
+    total_proposals: int
+    metadata: Dict = {}
+
+
+@router.post("/decompose/wiki", response_model=WikiDecomposeResponse)
+async def decompose_wikipedia_text(request: WikiDecomposeRequest):
+    """
+    Decompose Wikipedia article into facts (SPO triplets)
+
+    Extracts Subject-Predicate-Object triplets from encyclopedia text.
+    Uses pattern matching and heuristics to identify factual statements.
+
+    Example input: "Machine Learning is a branch of AI. Neural Networks are..."
+    Example output: [
+        {subject: "Machine Learning", predicate: "is_a", object: "branch of AI"},
+        {subject: "Neural Networks", predicate: "are", object: "..."}
+    ]
+
+    Returns list of extracted facts with confidence scores.
+    """
+    try:
+        # Import WikiDecomposer (from knowledge_transformer.py)
+        import sys
+        sys.path.insert(0, '/home/user/data7')
+        from knowledge_transformer import WikiDecomposer
+
+        # Decompose
+        decomposer = WikiDecomposer(use_ml=False)
+        facts = decomposer.decompose(request.text, request.metadata)
+
+        # Convert to response
+        fact_responses = [
+            FactResponse(
+                subject=fact.subject,
+                predicate=fact.predicate,
+                object=fact.object,
+                certainty=fact.certainty,
+                sources=fact.sources,
+                context=fact.context
+            )
+            for fact in facts
+        ]
+
+        return WikiDecomposeResponse(
+            facts=fact_responses,
+            total_facts=len(fact_responses),
+            metadata={
+                "source": request.metadata.get("source", "unknown"),
+                "extraction_method": "pattern_matching"
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Wikipedia decomposition failed: {str(e)}"
+        )
+
+
+@router.post("/synthesize/dissertation", response_model=DissertationSynthesizeResponse)
+async def synthesize_dissertation_proposals(request: DissertationSynthesizeRequest):
+    """
+    Synthesize dissertation proposals from encyclopedia facts
+
+    Identifies research gaps and generates novel dissertation ideas:
+    1. Builds knowledge graph from facts
+    2. Finds under-researched areas (low centrality concepts)
+    3. Identifies missing links between related concepts
+    4. Generates research proposals with novelty/impact scores
+
+    Example: Given facts about ML concepts, finds gaps like
+    "under-researched connection between reinforcement learning and NLP"
+
+    Returns ranked dissertation proposals with research questions.
+    """
+    try:
+        # Import DissertationSynthesizer
+        import sys
+        sys.path.insert(0, '/home/user/data7')
+        from knowledge_transformer import DissertationSynthesizer, Fact
+
+        # Convert dicts to Fact objects
+        facts = [
+            Fact(
+                subject=f.get("subject", ""),
+                predicate=f.get("predicate", ""),
+                object=f.get("object", ""),
+                certainty=f.get("certainty", 0.9),
+                sources=f.get("sources", []),
+                context=f.get("context", "")
+            )
+            for f in request.facts
+        ]
+
+        # Synthesize
+        synthesizer = DissertationSynthesizer(min_novelty=request.min_novelty)
+        proposals = synthesizer.synthesize(facts, domain=request.domain)
+
+        # Convert to response
+        proposal_responses = [
+            ProposalResponse(
+                title=p["title"],
+                description=p["description"],
+                novelty=p["novelty"],
+                impact=p["impact"],
+                feasibility=p["feasibility"],
+                gap_type=p["gap_type"],
+                research_questions=p["research_questions"],
+                methodology=p.get("methodology", ""),
+                expected_contributions=p["expected_contributions"]
+            )
+            for p in proposals
+        ]
+
+        return DissertationSynthesizeResponse(
+            proposals=proposal_responses,
+            total_proposals=len(proposal_responses),
+            metadata={
+                "domain": request.domain,
+                "min_novelty": request.min_novelty,
+                "facts_analyzed": len(facts)
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Dissertation synthesis failed: {str(e)}"
+        )
