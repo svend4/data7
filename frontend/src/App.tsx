@@ -13,10 +13,14 @@ import { Statistics } from './components/dashboard/Statistics'
 import { Card } from './components/common/Card'
 import { Button } from './components/common/Button'
 import { Modal } from './components/common/Modal'
+import { Scene3D } from './components/3d/Scene3D'
 import './styles/global.css'
+
+type ViewMode = '2d' | '3d'
 
 function App() {
   const [wsConnected, setWsConnected] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('2d')
   const [showTaskForm, setShowTaskForm] = useState(false)
   const [showAgentForm, setShowAgentForm] = useState(false)
   const [showConnectionForm, setShowConnectionForm] = useState(false)
@@ -175,7 +179,25 @@ function App() {
               />
               {wsConnected ? 'LIVE' : 'DISCONNECTED'}
             </div>
-            
+
+            {/* View Mode Toggle */}
+            <div style={{ display: 'flex', gap: '8px', marginLeft: '16px' }}>
+              <Button
+                onClick={() => setViewMode('2d')}
+                variant={viewMode === '2d' ? 'primary' : 'secondary'}
+                size="small"
+              >
+                📊 2D View
+              </Button>
+              <Button
+                onClick={() => setViewMode('3d')}
+                variant={viewMode === '3d' ? 'primary' : 'secondary'}
+                size="small"
+              >
+                🎭 3D View
+              </Button>
+            </div>
+
             <Button onClick={() => setShowTaskForm(true)} variant="success" size="small">
               + Create Task
             </Button>
@@ -190,39 +212,41 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '30px 20px' }}>
-        {/* Statistics */}
-        <div style={{ marginBottom: '30px' }}>
-          <Statistics />
-        </div>
+      <main style={{ maxWidth: viewMode === '3d' ? '100%' : '1400px', margin: '0 auto', padding: viewMode === '3d' ? '0' : '30px 20px' }}>
+        {viewMode === '2d' ? (
+          <>
+            {/* Statistics */}
+            <div style={{ marginBottom: '30px' }}>
+              <Statistics />
+            </div>
 
-        {/* Socket Board */}
-        <div style={{ marginBottom: '30px' }}>
-          <SocketBoard allocatedSockets={getAllocatedSockets()} />
-        </div>
+            {/* Socket Board */}
+            <div style={{ marginBottom: '30px' }}>
+              <SocketBoard allocatedSockets={getAllocatedSockets()} />
+            </div>
 
-        {/* Tasks Section */}
-        <div style={{ marginBottom: '30px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
-              📋 Tasks ({tasks.length})
-            </h2>
-            <Button onClick={() => setShowTaskForm(true)} variant="primary" size="small">
-              + New Task
-            </Button>
-          </div>
-          
-          {tasks.length === 0 ? (
-            <Card>
-              <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
-                <p style={{ fontSize: '18px', marginBottom: '16px' }}>
-                  No tasks yet. Click "+ Create Task" button above to create your first task!
-                </p>
-                <p style={{ fontSize: '14px' }}>
-                  Or use the REST API:
-                </p>
-                <div style={{ textAlign: 'left', maxWidth: '600px', margin: '16px auto 0' }}>
-                  <pre style={{ backgroundColor: '#f8f9fa', padding: '16px', borderRadius: '8px', overflow: 'auto' }}>
+            {/* Tasks Section */}
+            <div style={{ marginBottom: '30px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
+                  📋 Tasks ({tasks.length})
+                </h2>
+                <Button onClick={() => setShowTaskForm(true)} variant="primary" size="small">
+                  + New Task
+                </Button>
+              </div>
+
+              {tasks.length === 0 ? (
+                <Card>
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
+                    <p style={{ fontSize: '18px', marginBottom: '16px' }}>
+                      No tasks yet. Click "+ Create Task" button above to create your first task!
+                    </p>
+                    <p style={{ fontSize: '14px' }}>
+                      Or use the REST API:
+                    </p>
+                    <div style={{ textAlign: 'left', maxWidth: '600px', margin: '16px auto 0' }}>
+                      <pre style={{ backgroundColor: '#f8f9fa', padding: '16px', borderRadius: '8px', overflow: 'auto' }}>
 {`curl -X POST http://localhost:8000/api/tasks \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -230,181 +254,185 @@ function App() {
     "task_type": "test",
     "priority": 1
   }'`}
-                  </pre>
-                </div>
-              </div>
-            </Card>
-          ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                gap: '20px',
-              }}
-            >
-              {tasks.map((task) => (
-                <TaskCard key={task.id} task={task} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Agents Section */}
-        <div style={{ marginBottom: '30px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
-              🤖 Agents ({agents.length})
-            </h2>
-            <Button onClick={() => setShowAgentForm(true)} variant="primary" size="small">
-              + New Agent
-            </Button>
-          </div>
-
-          {agents.length === 0 ? (
-            <Card>
-              <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
-                <p style={{ fontSize: '18px' }}>
-                  No agents yet. Click "+ Create Agent" to add your first agent!
-                </p>
-              </div>
-            </Card>
-          ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                gap: '20px',
-              }}
-            >
-              {agents.map((agent) => (
-                <Card key={agent.id}>
-                  <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 600 }}>
-                    {agent.role}
-                  </h3>
-                  <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>ID:</strong> {agent.id.slice(0, 16)}...
-                  </p>
-                  <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>Status:</strong>{' '}
-                    <span
-                      style={{
-                        color:
-                          agent.status === 'idle'
-                            ? '#6c757d'
-                            : agent.status === 'busy'
-                            ? '#007bff'
-                            : agent.status === 'error'
-                            ? '#dc3545'
-                            : '#495057',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {agent.status.toUpperCase()}
-                    </span>
-                  </p>
-                  <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>Load:</strong> {(agent.current_load * 100).toFixed(1)}%
-                  </p>
-                  <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>Tasks Completed:</strong> {agent.total_tasks_completed}
-                  </p>
-                  {agent.capabilities.length > 0 && (
-                    <div style={{ marginTop: '8px' }}>
-                      <strong style={{ fontSize: '14px' }}>Capabilities:</strong>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
-                        {agent.capabilities.map((cap, i) => (
-                          <span
-                            key={i}
-                            style={{
-                              padding: '2px 8px',
-                              backgroundColor: '#e9ecef',
-                              borderRadius: '4px',
-                              fontSize: '12px',
-                            }}
-                          >
-                            {cap.name} (L{cap.level})
-                          </span>
-                        ))}
-                      </div>
+                      </pre>
                     </div>
-                  )}
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Connections Section */}
-        <div style={{ marginBottom: '30px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
-              🔌 Connections ({connections.length})
-            </h2>
-            <Button onClick={() => setShowConnectionForm(true)} variant="primary" size="small">
-              + New Connection
-            </Button>
-          </div>
-
-          {connections.length === 0 ? (
-            <Card>
-              <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
-                <p style={{ fontSize: '18px' }}>
-                  No connections yet. Click "+ Create Connection" to establish your first connection!
-                </p>
-              </div>
-            </Card>
-          ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                gap: '20px',
-              }}
-            >
-              {connections.map((connection) => (
-                <Card key={connection.id}>
-                  <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
-                      Connection {connection.id.slice(0, 8)}...
-                    </h3>
-                    <span
-                      style={{
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        backgroundColor:
-                          connection.status === 'connected'
-                            ? '#28a745'
-                            : connection.status === 'transmitting'
-                            ? '#17a2b8'
-                            : '#6c757d',
-                        color: 'white',
-                      }}
-                    >
-                      {connection.status}
-                    </span>
                   </div>
-                  <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>From:</strong> {connection.from_agent_id.slice(0, 16)}...
-                  </p>
-                  <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>To:</strong> {connection.to_agent_id.slice(0, 16)}...
-                  </p>
-                  {connection.socket_from && connection.socket_to && (
-                    <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                      <strong>Sockets:</strong> {connection.socket_from} ↔ {connection.socket_to}
-                    </p>
-                  )}
-                  <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>Protocol:</strong> {connection.protocol}
-                  </p>
                 </Card>
-              ))}
+              ) : (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                    gap: '20px',
+                  }}
+                >
+                  {tasks.map((task) => (
+                    <TaskCard key={task.id} task={task} />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {/* Agents Section */}
+            <div style={{ marginBottom: '30px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
+                  🤖 Agents ({agents.length})
+                </h2>
+                <Button onClick={() => setShowAgentForm(true)} variant="primary" size="small">
+                  + New Agent
+                </Button>
+              </div>
+
+              {agents.length === 0 ? (
+                <Card>
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
+                    <p style={{ fontSize: '18px' }}>
+                      No agents yet. Click "+ Create Agent" to add your first agent!
+                    </p>
+                  </div>
+                </Card>
+              ) : (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                    gap: '20px',
+                  }}
+                >
+                  {agents.map((agent) => (
+                    <Card key={agent.id}>
+                      <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 600 }}>
+                        {agent.role}
+                      </h3>
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                        <strong>ID:</strong> {agent.id.slice(0, 16)}...
+                      </p>
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                        <strong>Status:</strong>{' '}
+                        <span
+                          style={{
+                            color:
+                              agent.status === 'idle'
+                                ? '#6c757d'
+                                : agent.status === 'busy'
+                                ? '#007bff'
+                                : agent.status === 'error'
+                                ? '#dc3545'
+                                : '#495057',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {agent.status.toUpperCase()}
+                        </span>
+                      </p>
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                        <strong>Load:</strong> {(agent.current_load * 100).toFixed(1)}%
+                      </p>
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                        <strong>Tasks Completed:</strong> {agent.total_tasks_completed}
+                      </p>
+                      {agent.capabilities.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <strong style={{ fontSize: '14px' }}>Capabilities:</strong>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                            {agent.capabilities.map((cap, i) => (
+                              <span
+                                key={i}
+                                style={{
+                                  padding: '2px 8px',
+                                  backgroundColor: '#e9ecef',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                }}
+                              >
+                                {cap.name} (L{cap.level})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Connections Section */}
+            <div style={{ marginBottom: '30px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
+                  🔌 Connections ({connections.length})
+                </h2>
+                <Button onClick={() => setShowConnectionForm(true)} variant="primary" size="small">
+                  + New Connection
+                </Button>
+              </div>
+
+              {connections.length === 0 ? (
+                <Card>
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
+                    <p style={{ fontSize: '18px' }}>
+                      No connections yet. Click "+ Create Connection" to establish your first connection!
+                    </p>
+                  </div>
+                </Card>
+              ) : (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                    gap: '20px',
+                  }}
+                >
+                  {connections.map((connection) => (
+                    <Card key={connection.id}>
+                      <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
+                          Connection {connection.id.slice(0, 8)}...
+                        </h3>
+                        <span
+                          style={{
+                            padding: '4px 12px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            backgroundColor:
+                              connection.status === 'connected'
+                                ? '#28a745'
+                                : connection.status === 'transmitting'
+                                ? '#17a2b8'
+                                : '#6c757d',
+                            color: 'white',
+                          }}
+                        >
+                          {connection.status}
+                        </span>
+                      </div>
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                        <strong>From:</strong> {connection.from_agent_id.slice(0, 16)}...
+                      </p>
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                        <strong>To:</strong> {connection.to_agent_id.slice(0, 16)}...
+                      </p>
+                      {connection.socket_from && connection.socket_to && (
+                        <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                          <strong>Sockets:</strong> {connection.socket_from} ↔ {connection.socket_to}
+                        </p>
+                      )}
+                      <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                        <strong>Protocol:</strong> {connection.protocol}
+                      </p>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <Scene3D />
+        )}
       </main>
 
       {/* Footer */}
@@ -418,7 +446,7 @@ function App() {
         }}
       >
         <p style={{ margin: 0, fontSize: '14px', opacity: 0.8 }}>
-          Meta-Orchestrator Switchboard &copy; 2025 | Phase 5: Frontend Integration
+          Meta-Orchestrator Switchboard &copy; 2025 | Phase 6: 3D Art Deco Visualization
         </p>
       </footer>
 
