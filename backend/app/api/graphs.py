@@ -18,6 +18,8 @@ from app.schemas.graph import (
 )
 from app.infrastructure.repositories import GraphRepository, ExecutionRepository
 from app.core.dependencies import get_graph_repository, get_execution_repository
+from app.websocket import connection_manager
+from app.websocket.events import EventType
 
 router = APIRouter(prefix="/graphs", tags=["graphs"])
 
@@ -101,6 +103,12 @@ async def create_graph(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create graph: {str(e)}"
         )
+
+    # Broadcast event
+    await connection_manager.broadcast(
+        EventType.GRAPH_CREATED,
+        graph_to_response(graph).dict()
+    )
 
     return graph_to_response(graph)
 
@@ -187,6 +195,21 @@ async def execute_graph(
         exec_model = await exec_repo.create_execution(execution)
         execution = exec_repo.to_domain(exec_model)
 
+        # Broadcast graph execution event
+        await connection_manager.broadcast(
+            EventType.GRAPH_EXECUTED,
+            {
+                "graph_id": graph_id,
+                "execution": execution_to_response(execution).dict()
+            }
+        )
+
+        # Broadcast execution started event
+        await connection_manager.broadcast(
+            EventType.EXECUTION_STARTED,
+            execution_to_response(execution).dict()
+        )
+
         # In production, this would trigger async execution
         # For MVP, we just return the execution object
         # TODO: Implement actual graph execution logic in Phase 4
@@ -259,6 +282,12 @@ async def delete_graph(
 
         # Delete from database (cascades to edges and executions)
         await repo.delete(graph_id)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.GRAPH_DELETED,
+            {"graph_id": graph_id}
+        )
 
     except HTTPException:
         raise
@@ -336,6 +365,13 @@ async def cancel_execution(
         )
 
         execution = repo.to_domain(exec_model)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.EXECUTION_CANCELLED,
+            execution_to_response(execution).dict()
+        )
+
         return execution_to_response(execution)
 
     except HTTPException:

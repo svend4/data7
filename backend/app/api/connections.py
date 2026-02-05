@@ -12,6 +12,8 @@ from app.domain.value_objects import ConnectionStatus
 from app.schemas.connection import ConnectionCreateRequest, ConnectionResponse
 from app.infrastructure.repositories import ConnectionRepository
 from app.core.dependencies import get_connection_repository
+from app.websocket import connection_manager
+from app.websocket.events import EventType
 
 router = APIRouter(prefix="/connections", tags=["connections"])
 
@@ -78,6 +80,12 @@ async def create_connection(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create connection: {str(e)}"
         )
+
+    # Broadcast event
+    await connection_manager.broadcast(
+        EventType.CONNECTION_CREATED,
+        connection_to_response(connection).dict()
+    )
 
     return connection_to_response(connection)
 
@@ -202,6 +210,13 @@ async def establish_connection(
         )
 
         connection = repo.to_domain(conn_model)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.CONNECTION_ESTABLISHED,
+            connection_to_response(connection).dict()
+        )
+
         return connection_to_response(connection)
 
     except HTTPException:
@@ -254,6 +269,13 @@ async def disconnect_connection(
         )
 
         connection = repo.to_domain(conn_model)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.CONNECTION_DISCONNECTED,
+            connection_to_response(connection).dict()
+        )
+
         return connection_to_response(connection)
 
     except HTTPException:
@@ -287,6 +309,12 @@ async def delete_connection(
 
         # Delete from database (sockets automatically freed by query)
         await repo.delete(connection_id)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.CONNECTION_DELETED,
+            {"connection_id": connection_id}
+        )
 
     except HTTPException:
         raise

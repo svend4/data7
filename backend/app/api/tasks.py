@@ -19,6 +19,8 @@ from app.schemas.task import (
 )
 from app.infrastructure.repositories import TaskRepository
 from app.core.dependencies import get_task_repository
+from app.websocket import connection_manager
+from app.websocket.events import EventType
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -75,6 +77,12 @@ async def create_task(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create task: {str(e)}"
         )
+
+    # Broadcast event
+    await connection_manager.broadcast(
+        EventType.TASK_CREATED,
+        task_to_response(task).dict()
+    )
 
     return task_to_response(task)
 
@@ -191,6 +199,13 @@ async def start_task(
         )
 
         task = repo.to_domain(task_model)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.TASK_STARTED,
+            task_to_response(task).dict()
+        )
+
         return task_to_response(task)
 
     except HTTPException:
@@ -244,6 +259,13 @@ async def complete_task(
         )
 
         task = repo.to_domain(task_model)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.TASK_COMPLETED,
+            task_to_response(task).dict()
+        )
+
         return task_to_response(task)
 
     except HTTPException:
@@ -297,6 +319,13 @@ async def fail_task(
         )
 
         task = repo.to_domain(task_model)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.TASK_FAILED,
+            task_to_response(task).dict()
+        )
+
         return task_to_response(task)
 
     except HTTPException:
@@ -330,6 +359,12 @@ async def delete_task(
 
         # Delete from database
         await repo.delete(task_id)
+
+        # Broadcast event
+        await connection_manager.broadcast(
+            EventType.TASK_DELETED,
+            {"task_id": task_id}
+        )
 
     except HTTPException:
         raise
