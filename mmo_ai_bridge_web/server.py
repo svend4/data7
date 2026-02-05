@@ -249,7 +249,7 @@ def health_check():
 
     return jsonify({
         "status": "healthy",
-        "version": "1.0",
+        "version": "1.1",
         "mmo_bridge_available": HAS_MMO_BRIDGE,
         "database_available": HAS_DATABASE,
         "database_status": db_status,
@@ -522,6 +522,82 @@ def batch_translate():
 
 
 # ============================================================================
+# Session Recording API (v1.1)
+# ============================================================================
+
+@app.route('/api/recordings', methods=['POST'])
+def save_recording():
+    """Save a session recording"""
+    try:
+        data = request.json
+        session_name = data.get('session_name', f'Recording_{int(time.time())}')
+        events = data.get('events', [])
+        description = data.get('description')
+        duration_seconds = data.get('duration_seconds', 0)
+
+        if not events:
+            return jsonify({"error": "No events provided"}), 400
+
+        recording_id = db.save_session_recording(
+            session_name=session_name,
+            events=events,
+            description=description,
+            duration_seconds=duration_seconds
+        )
+
+        return jsonify({
+            "success": True,
+            "recording_id": recording_id,
+            "event_count": len(events)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/recordings', methods=['GET'])
+def list_recordings():
+    """List all session recordings"""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        recordings = db.list_session_recordings(limit=limit)
+
+        return jsonify({
+            "recordings": recordings,
+            "count": len(recordings)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/recordings/<int:recording_id>', methods=['GET'])
+def get_recording(recording_id):
+    """Get a specific session recording with all events"""
+    try:
+        recording = db.get_session_recording(recording_id)
+
+        if not recording:
+            return jsonify({"error": "Recording not found"}), 404
+
+        return jsonify(recording)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/recordings/<int:recording_id>', methods=['DELETE'])
+def delete_recording(recording_id):
+    """Delete a session recording"""
+    try:
+        success = db.delete_session_recording(recording_id)
+
+        if success:
+            return jsonify({"success": True, "message": "Recording deleted"})
+        else:
+            return jsonify({"error": "Recording not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
 # WebSocket Event Handlers
 # ============================================================================
 
@@ -531,8 +607,8 @@ def handle_connect():
     print(f"Client connected: {request.sid}")
     emit('connection_response', {
         "status": "connected",
-        "message": "Welcome to MMO AI Bridge v1.0!",
-        "version": "1.0"
+        "message": "Welcome to MMO AI Bridge v1.1!",
+        "version": "1.1"
     })
 
 
@@ -727,14 +803,19 @@ def handle_character_update(data):
 
 if __name__ == '__main__':
     print("\n" + "=" * 70)
-    print("🎮 MMO AI BRIDGE v1.0 - PRODUCTION RELEASE")
+    print("🎮 MMO AI BRIDGE v1.1 - CORE ENHANCEMENT UPDATE")
     print("=" * 70)
     print(f"\n🌐 Server: http://localhost:5000")
     print(f"🎯 Statistics Dashboard: http://localhost:5000/stats.html")
     print(f"\n🔧 MMO Bridge Module: {'✅ Available' if HAS_MMO_BRIDGE else '⚠️  Not Available (Fallback Mode)'}")
     print(f"💾 Database: {'✅ Available' if HAS_DATABASE else '⚠️  Not Available'}")
     print("📡 WebSocket Support: ✅ Enabled")
-    print("\n📍 REST API Endpoints (16 total):")
+    print("\n🆕 v1.1 Features:")
+    print("  ✅ 169 AI concepts (50 → 169)")
+    print("  ✅ Session recording & replay")
+    print("  ✅ GIF export functionality")
+    print("  ✅ Multi-model comparison UI foundation")
+    print("\n📍 REST API Endpoints (20 total):")
     print("  Translation:")
     print("    POST /api/translate           - Translate AI text to MMO characters")
     print("    POST /api/batch/translate     - Batch translate multiple texts")
@@ -751,6 +832,11 @@ if __name__ == '__main__':
     print("    GET  /api/export/json         - Export all data as JSON")
     print("    GET  /api/export/csv          - Export characters as CSV")
     print("    GET  /api/export/character/<id> - Export character history")
+    print("  Recordings (v1.1):")
+    print("    POST /api/recordings          - Save session recording")
+    print("    GET  /api/recordings          - List all recordings")
+    print("    GET  /api/recordings/<id>     - Get recording details")
+    print("    DELETE /api/recordings/<id>   - Delete recording")
     print("  Other:")
     print("    GET  /api/concepts            - Get supported AI concepts")
     print("    POST /api/simulate/pipeline   - Simulate ML pipeline")
@@ -761,13 +847,16 @@ if __name__ == '__main__':
     print("  stop_simulation               - Stop active simulation")
     print("  update_character              - Broadcast character updates")
     print("\n📊 Features:")
-    print("  ✅ Persistent Storage (SQLite)")
+    print("  ✅ Persistent Storage (SQLite + 6 tables)")
     print("  ✅ Real-time Training Simulation")
     print("  ✅ Advanced Animations (20+)")
     print("  ✅ Statistics Dashboard")
-    print("  ✅ Data Export (CSV/JSON)")
+    print("  ✅ Data Export (CSV/JSON/PNG/GIF)")
     print("  ✅ Batch Processing")
-    print("\n🎉 Status: PRODUCTION READY")
+    print("  ✅ Session Recording & Replay")
+    print("  ✅ Multi-Model Comparison UI")
+    print("  ✅ 169 AI Concepts (11 Character Classes)")
+    print("\n🎉 Status: v1.1 READY")
     print("\nPress Ctrl+C to stop")
     print("=" * 70 + "\n")
 

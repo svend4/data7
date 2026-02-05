@@ -1,9 +1,41 @@
 # MMO AI Bridge - Web Interface
-## v1.0 - PRODUCTION RELEASE 🎉
+## v1.1 - CORE ENHANCEMENT UPDATE 🚀
 
-Beautiful web interface for visualizing AI/ML systems as MMO game characters with full persistence, real-time updates, and comprehensive analytics.
+Beautiful web interface for visualizing AI/ML systems as MMO game characters with full persistence, real-time updates, comprehensive analytics, and now with session recording and expanded AI concept support.
 
-**Status**: ✅ Production Ready | **Docker**: ✅ Supported | **Database**: ✅ SQLite
+**Status**: ✅ Production Ready | **Docker**: ✅ Supported | **Database**: ✅ SQLite | **Version**: 1.1
+
+---
+
+## 🆕 What's New in v1.1
+
+**🎯 Massively Expanded AI Concepts**
+- AI concept database: 50 → 169 concepts (238% increase)
+- Modern LLMs: GPT-4, Claude, Gemini, LLaMA, Mistral, Falcon
+- Advanced models: Stable Diffusion, StyleGAN, Vision Transformers
+- MLOps tools: MLflow, Kubeflow, Optuna, Hyperopt
+- Time series: ARIMA, SARIMA, Prophet
+- More RL algorithms: PPO, SAC, TD3, DDPG
+
+**🎬 Session Recording & Replay**
+- Record all translation and training events
+- Save sessions to database for later replay
+- Replay sessions with original timing
+- 4 new API endpoints for session management
+
+**🎨 GIF Export**
+- Export animated scenes as GIF files
+- Captures multiple frames with timing
+- Perfect for presentations and documentation
+
+**🔬 Multi-Model Comparison UI (Foundation)**
+- Side-by-side comparison interface
+- Ready for v1.5 multi-model API integrations
+- Placeholder for GPT-4, Claude, Gemini, LLaMA
+
+**🎮 New Character Classes**
+- Necromancer: GANs and generative models
+- Artificer: AutoML and optimization tools
 
 ---
 
@@ -49,7 +81,7 @@ http://localhost:5000
 
 ---
 
-## 🎉 What's New in v1.0
+## 🎉 What Was in v1.0
 
 🐳 **Docker Deployment**
 - One-command deployment with docker-compose
@@ -68,7 +100,7 @@ http://localhost:5000
 
 ---
 
-## 📋 Features (v1.0)
+## 📋 Features (v1.1)
 
 🎉 **WebSocket Integration**
 - Real-time bidirectional communication

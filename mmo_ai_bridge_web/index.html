@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MMO AI Bridge v1.0 - Production Release</title>
+    <title>MMO AI Bridge v1.1 - Core Enhancement Update</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.4.5/gifshot.min.js"></script>
     <link rel="stylesheet" href="animations.css">
     <style>
         * {
@@ -529,7 +530,7 @@
     <div class="container">
         <header>
             <h1>🎮 MMO AI Bridge</h1>
-            <p class="version">Version 1.0 - Production Release 🎉</p>
+            <p class="version">Version 1.1 - Core Enhancement Update 🚀</p>
             <div class="connection-status">
                 <div class="status-indicator" id="connection-indicator"></div>
                 <span id="connection-text">Connecting...</span>
@@ -539,7 +540,14 @@
         <div class="toolbar">
             <button onclick="startTrainingSimulation()">▶️ Start Training</button>
             <button onclick="stopSimulation()">⏹️ Stop</button>
-            <button onclick="exportScene()">📸 Export Scene</button>
+            <button onclick="exportScene()">📸 Export PNG</button>
+            <button onclick="exportGIF()">🎬 Export GIF</button>
+            <span style="border-left: 2px solid #ddd; margin: 0 5px;"></span>
+            <button id="recordBtn" onclick="startRecording()" style="background: #e74c3c;">⏺️ Record</button>
+            <button id="stopRecordBtn" onclick="stopRecording()" style="display: none; background: #95a5a6;">⏹️ Stop Rec</button>
+            <button id="saveRecordBtn" onclick="saveRecording()" style="display: none; background: #27ae60;">💾 Save</button>
+            <button onclick="showRecordingsModal()">📼 Load Session</button>
+            <span style="border-left: 2px solid #ddd; margin: 0 5px;"></span>
             <button onclick="window.location.href='stats.html'">📊 Statistics</button>
             <button onclick="clearCharacters()">🗑️ Clear All</button>
         </div>
@@ -578,6 +586,64 @@
                 </div>
             </div>
 
+            <!-- Multi-Model Comparison Panel (v1.1 Foundation) -->
+            <div class="panel" id="comparison-panel" style="display: none; grid-column: 1 / -1; margin-top: 20px;">
+                <h2>🔬 Multi-Model Comparison <span style="font-size: 14px; color: #999;">(Preview - v1.1)</span></h2>
+                <p style="color: #999; margin-bottom: 20px;">Foundation for comparing outputs from different AI models. Full integration coming in v1.5.</p>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <!-- Model 1: Current Model -->
+                    <div style="border: 2px solid #667eea; border-radius: 8px; padding: 15px; background: white;">
+                        <h3 style="color: #667eea; margin-bottom: 10px;">
+                            <span style="font-size: 20px;">🎯</span> Current Model
+                        </h3>
+                        <div id="comparison-model-1" style="min-height: 200px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                            <div id="comparison-characters-1"></div>
+                        </div>
+                        <p style="color: #999; font-size: 12px; margin-top: 10px;">Local Translation Engine</p>
+                    </div>
+
+                    <!-- Model 2: Placeholder -->
+                    <div style="border: 2px dashed #ccc; border-radius: 8px; padding: 15px; background: #f8f9fa;">
+                        <h3 style="color: #999; margin-bottom: 10px;">
+                            <span style="font-size: 20px;">🤖</span> Model 2
+                        </h3>
+                        <div style="min-height: 200px; padding: 10px; background: white; border-radius: 5px; display: flex; align-items: center; justify-content: center;">
+                            <p style="color: #ccc; text-align: center;">
+                                Coming in v1.5<br>
+                                <small>GPT-4 / Claude / Gemini</small>
+                            </p>
+                        </div>
+                        <p style="color: #ccc; font-size: 12px; margin-top: 10px;">Not configured</p>
+                    </div>
+
+                    <!-- Model 3: Placeholder -->
+                    <div style="border: 2px dashed #ccc; border-radius: 8px; padding: 15px; background: #f8f9fa;">
+                        <h3 style="color: #999; margin-bottom: 10px;">
+                            <span style="font-size: 20px;">🤖</span> Model 3
+                        </h3>
+                        <div style="min-height: 200px; padding: 10px; background: white; border-radius: 5px; display: flex; align-items: center; justify-content: center;">
+                            <p style="color: #ccc; text-align: center;">
+                                Coming in v1.5<br>
+                                <small>LLaMA / Mistral / Custom</small>
+                            </p>
+                        </div>
+                        <p style="color: #ccc; font-size: 12px; margin-top: 10px;">Not configured</p>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px; padding: 15px; background: rgba(102, 126, 234, 0.1); border-radius: 8px;">
+                    <h4 style="color: #667eea; margin-bottom: 10px;">📝 Comparison Notes</h4>
+                    <ul style="color: #555; line-height: 1.8;">
+                        <li>v1.1: UI foundation ready</li>
+                        <li>v1.5: API integrations (GPT-4, Claude, Gemini, LLaMA, Mistral)</li>
+                        <li>v1.5: Side-by-side character comparison</li>
+                        <li>v1.5: Metrics comparison (accuracy, speed, cost)</li>
+                        <li>v2.0: Model voting and ensemble results</li>
+                    </ul>
+                </div>
+            </div>
+
             <div class="panel" id="settings-panel">
                 <h2>⚙️ Settings</h2>
 
@@ -608,6 +674,19 @@
                     </select>
                 </div>
 
+                <div class="setting-group" style="border-top: 2px solid #ddd; padding-top: 15px; margin-top: 15px;">
+                    <label>🆕 Model Comparison (v1.1)</label>
+                    <div style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">
+                            <input type="checkbox" id="comparison-mode" onchange="toggleComparisonMode()" style="margin-right: 8px;">
+                            Enable Multi-Model Comparison
+                        </label>
+                    </div>
+                    <p style="color: #999; font-size: 12px; margin-top: 8px;">
+                        Compare outputs from different AI models (foundation for v1.5)
+                    </p>
+                </div>
+
                 <div class="animation-controls">
                     <button onclick="toggleAnimations()" id="animation-toggle">⏸️ Pause</button>
                     <button onclick="resetView()">🔄 Reset</button>
@@ -628,6 +707,17 @@
             <span class="modal-close" onclick="closeModal()">&times;</span>
             <h2 id="modal-character-name">Character Details</h2>
             <div id="modal-character-details"></div>
+        </div>
+    </div>
+
+    <!-- Session Recordings Modal -->
+    <div class="modal" id="recordings-modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <span class="modal-close" onclick="closeRecordingsModal()">&times;</span>
+            <h2>📼 Session Recordings</h2>
+            <div id="recordings-list" style="max-height: 400px; overflow-y: auto;">
+                <p style="text-align: center; color: #999;">Loading...</p>
+            </div>
         </div>
     </div>
 
@@ -717,10 +807,14 @@
                 sessionCount++;
                 updateStats();
 
+                // Return data for recording
+                return { characters: data.characters, description: data.scene_description };
+
             } catch (error) {
                 console.error('Error:', error);
                 alert('Failed to connect to server. Make sure the server is running on port 5000.');
                 hideLoading();
+                return null;
             }
         }
 
@@ -732,6 +826,12 @@
                 const card = createCharacterCard(char, index);
                 container.appendChild(card);
             });
+
+            // Update comparison view if enabled
+            const comparisonMode = document.getElementById('comparison-mode');
+            if (comparisonMode && comparisonMode.checked) {
+                updateComparisonView();
+            }
         }
 
         function createCharacterCard(char, index) {
@@ -927,6 +1027,87 @@
             }
         }
 
+        async function exportGIF() {
+            if (typeof gifshot === 'undefined') {
+                alert('GIF export library not loaded. Please refresh the page.');
+                return;
+            }
+
+            const container = document.getElementById('characters-container');
+            if (!container || container.children.length === 0) {
+                alert('No characters to export!');
+                return;
+            }
+
+            // Show progress message
+            const progressMsg = document.createElement('div');
+            progressMsg.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(102, 126, 234, 0.95); color: white; padding: 30px 50px; border-radius: 15px; font-size: 18px; z-index: 10000; text-align: center;';
+            progressMsg.innerHTML = '🎬 Creating animated GIF...<br><small style="opacity: 0.8;">Capturing frames (3 seconds)</small>';
+            document.body.appendChild(progressMsg);
+
+            try {
+                // Capture multiple frames over 3 seconds
+                const frames = [];
+                const frameCount = 15; // 15 frames = ~5 FPS
+                const interval = 200; // 200ms between frames
+
+                for (let i = 0; i < frameCount; i++) {
+                    const canvas = await html2canvas(container, {
+                        backgroundColor: '#f8f9fa',
+                        scale: 1.5,
+                        logging: false
+                    });
+                    frames.push(canvas.toDataURL('image/png'));
+
+                    // Wait before next frame
+                    if (i < frameCount - 1) {
+                        await new Promise(resolve => setTimeout(resolve, interval));
+                    }
+
+                    // Update progress
+                    progressMsg.innerHTML = `🎬 Creating animated GIF...<br><small style="opacity: 0.8;">Frame ${i + 1}/${frameCount}</small>`;
+                }
+
+                // Create GIF from frames
+                progressMsg.innerHTML = '🎬 Encoding GIF...<br><small style="opacity: 0.8;">Please wait...</small>';
+
+                gifshot.createGIF({
+                    images: frames,
+                    gifWidth: container.offsetWidth * 1.5,
+                    gifHeight: container.offsetHeight * 1.5,
+                    interval: 0.2, // 200ms per frame
+                    numFrames: frameCount,
+                    frameDuration: 200,
+                    sampleInterval: 10,
+                    progressCallback: function(progress) {
+                        progressMsg.innerHTML = `🎬 Encoding GIF...<br><small style="opacity: 0.8;">${Math.round(progress * 100)}%</small>`;
+                    }
+                }, function(obj) {
+                    if (!obj.error) {
+                        // Download the GIF
+                        const link = document.createElement('a');
+                        link.download = `mmo-ai-bridge-animation-${Date.now()}.gif`;
+                        link.href = obj.image;
+                        link.click();
+
+                        document.body.removeChild(progressMsg);
+                        alert('✅ Animated GIF exported successfully!');
+                    } else {
+                        document.body.removeChild(progressMsg);
+                        console.error('GIF creation failed:', obj.error);
+                        alert('❌ Failed to create GIF: ' + obj.error);
+                    }
+                });
+
+            } catch (error) {
+                if (document.body.contains(progressMsg)) {
+                    document.body.removeChild(progressMsg);
+                }
+                console.error('GIF export failed:', error);
+                alert('❌ Failed to export GIF: ' + error.message);
+            }
+        }
+
         function clearCharacters() {
             if (confirm('Clear all characters?')) {
                 characters = [];
@@ -951,6 +1132,39 @@
                     card.style.animationPlayState = 'running';
                 });
             }
+        }
+
+        function toggleComparisonMode() {
+            const comparisonMode = document.getElementById('comparison-mode').checked;
+            const comparisonPanel = document.getElementById('comparison-panel');
+
+            if (comparisonMode) {
+                comparisonPanel.style.display = 'block';
+                // Copy current characters to comparison panel
+                updateComparisonView();
+                console.log('🔬 Comparison mode enabled');
+            } else {
+                comparisonPanel.style.display = 'none';
+                console.log('🔬 Comparison mode disabled');
+            }
+        }
+
+        function updateComparisonView() {
+            const container = document.getElementById('comparison-characters-1');
+            if (!container) return;
+
+            if (characters.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No characters to compare</p>';
+                return;
+            }
+
+            // Show simplified character list for comparison
+            container.innerHTML = characters.map(char => `
+                <div style="padding: 8px; margin: 5px 0; background: white; border-radius: 5px; border-left: 3px solid #667eea;">
+                    <strong>${char.icon} ${char.name}</strong>
+                    <span style="color: #999; font-size: 12px;"> - ${char.char_class}</span>
+                </div>
+            `).join('');
         }
 
         function resetView() {
@@ -1045,11 +1259,224 @@
             document.getElementById('epochs-value').textContent = document.getElementById('training-epochs').value;
         }
 
+        // ========================================
+        // Session Recording Functions (v1.1)
+        // ========================================
+        let isRecording = false;
+        let recordedEvents = [];
+        let recordingStartTime = null;
+
+        function startRecording() {
+            isRecording = true;
+            recordedEvents = [];
+            recordingStartTime = Date.now();
+
+            document.getElementById('recordBtn').style.display = 'none';
+            document.getElementById('stopRecordBtn').style.display = 'inline-block';
+
+            console.log('🔴 Recording started');
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            document.getElementById('stopRecordBtn').style.display = 'none';
+            document.getElementById('saveRecordBtn').style.display = 'inline-block';
+
+            console.log(`⏹️ Recording stopped. ${recordedEvents.length} events captured`);
+        }
+
+        function recordEvent(eventType, eventData) {
+            if (!isRecording) return;
+
+            const timestamp = Date.now() - recordingStartTime;
+            recordedEvents.push({
+                type: eventType,
+                timestamp: timestamp,
+                data: eventData
+            });
+        }
+
+        async function saveRecording() {
+            if (recordedEvents.length === 0) {
+                alert('No events to save!');
+                return;
+            }
+
+            const sessionName = prompt('Enter a name for this session:', `Session ${new Date().toLocaleString()}`);
+            if (!sessionName) return;
+
+            const description = prompt('Enter a description (optional):', '');
+            const durationSeconds = Math.round((Date.now() - recordingStartTime) / 1000);
+
+            try {
+                const response = await fetch('/api/recordings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_name: sessionName,
+                        description: description,
+                        events: recordedEvents,
+                        duration_seconds: durationSeconds
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✅ Session saved! ${result.event_count} events recorded.`);
+                    document.getElementById('saveRecordBtn').style.display = 'none';
+                    document.getElementById('recordBtn').style.display = 'inline-block';
+                    recordedEvents = [];
+                } else {
+                    alert('❌ Failed to save session: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Save recording error:', error);
+                alert('❌ Failed to save recording');
+            }
+        }
+
+        async function showRecordingsModal() {
+            const modal = document.getElementById('recordings-modal');
+            const listDiv = document.getElementById('recordings-list');
+
+            modal.classList.add('active');
+            listDiv.innerHTML = '<p style="text-align: center; color: #999;">Loading...</p>';
+
+            try {
+                const response = await fetch('/api/recordings');
+                const data = await response.json();
+
+                if (data.recordings && data.recordings.length > 0) {
+                    listDiv.innerHTML = data.recordings.map(rec => `
+                        <div style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 8px; background: white;">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div style="flex: 1;">
+                                    <h3 style="margin: 0 0 10px 0; color: #667eea;">${rec.session_name}</h3>
+                                    ${rec.description ? `<p style="margin: 5px 0; color: #666; font-size: 14px;">${rec.description}</p>` : ''}
+                                    <p style="margin: 5px 0; color: #999; font-size: 12px;">
+                                        📅 ${new Date(rec.created_at).toLocaleString()} |
+                                        ⏱️ ${rec.duration_seconds}s |
+                                        📊 ${rec.event_count} events
+                                    </p>
+                                </div>
+                                <div style="margin-left: 15px;">
+                                    <button onclick="replayRecording(${rec.id})" style="background: #667eea; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; margin-bottom: 5px; display: block; width: 100px;">▶️ Replay</button>
+                                    <button onclick="deleteRecordingConfirm(${rec.id})" style="background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; display: block; width: 100px;">🗑️ Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    listDiv.innerHTML = '<p style="text-align: center; color: #999;">No recordings found. Start recording a session!</p>';
+                }
+            } catch (error) {
+                console.error('Load recordings error:', error);
+                listDiv.innerHTML = '<p style="text-align: center; color: #e74c3c;">Failed to load recordings</p>';
+            }
+        }
+
+        function closeRecordingsModal() {
+            document.getElementById('recordings-modal').classList.remove('active');
+        }
+
+        async function replayRecording(recordingId) {
+            closeRecordingsModal();
+
+            try {
+                const response = await fetch(`/api/recordings/${recordingId}`);
+                const recording = await response.json();
+
+                if (!recording || !recording.events) {
+                    alert('Failed to load recording');
+                    return;
+                }
+
+                // Clear current scene
+                clearCharacters();
+
+                console.log(`▶️ Replaying: ${recording.session_name} (${recording.events.length} events)`);
+
+                // Replay events with timing
+                for (let i = 0; i < recording.events.length; i++) {
+                    const event = recording.events[i];
+                    const delay = i === 0 ? 0 : event.timestamp - recording.events[i-1].timestamp;
+
+                    await new Promise(resolve => setTimeout(resolve, delay));
+
+                    // Execute event based on type
+                    if (event.type === 'translate') {
+                        await replayTranslateEvent(event.data);
+                    } else if (event.type === 'training_update') {
+                        replayTrainingUpdate(event.data);
+                    }
+                }
+
+                console.log('✅ Replay complete');
+                alert(`✅ Replay complete: ${recording.session_name}`);
+            } catch (error) {
+                console.error('Replay error:', error);
+                alert('❌ Failed to replay recording');
+            }
+        }
+
+        async function replayTranslateEvent(data) {
+            // Re-create characters from recorded data
+            if (data.characters) {
+                data.characters.forEach(char => {
+                    characters.push(char);
+                });
+                renderCharacters();
+            }
+        }
+
+        function replayTrainingUpdate(data) {
+            // Update character metrics during replay
+            if (data.character_index !== undefined && characters[data.character_index]) {
+                characters[data.character_index].metrics = data.metrics;
+                renderCharacters();
+            }
+        }
+
+        async function deleteRecordingConfirm(recordingId) {
+            if (!confirm('Delete this recording?')) return;
+
+            try {
+                const response = await fetch(`/api/recordings/${recordingId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    showRecordingsModal(); // Refresh list
+                } else {
+                    alert('Failed to delete recording');
+                }
+            } catch (error) {
+                console.error('Delete error:', error);
+                alert('Failed to delete recording');
+            }
+        }
+
+        // Intercept translate function to record events
+        const originalTranslateText = translateText;
+        translateText = async function() {
+            const result = await originalTranslateText();
+            if (result && result.characters) {
+                recordEvent('translate', { characters: result.characters, description: result.description });
+            }
+            return result;
+        };
+
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('character-modal');
-            if (event.target === modal) {
+            const charModal = document.getElementById('character-modal');
+            const recModal = document.getElementById('recordings-modal');
+            if (event.target === charModal) {
                 closeModal();
+            }
+            if (event.target === recModal) {
+                closeRecordingsModal();
             }
         }
 

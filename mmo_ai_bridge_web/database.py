@@ -120,6 +120,19 @@ class Database:
                 )
             """)
 
+            # Session recordings table (v1.1 feature)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS session_recordings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_name TEXT NOT NULL,
+                    description TEXT,
+                    events TEXT NOT NULL,
+                    duration_seconds INTEGER,
+                    event_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # Create indexes for better performance
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_characters_name
@@ -134,6 +147,11 @@ class Database:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_metrics_session
                 ON training_metrics(session_id)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_recordings_name
+                ON session_recordings(session_name)
             """)
 
     # ========================================================================
@@ -534,6 +552,84 @@ class Database:
             'character': char,
             'training_sessions': sessions
         }
+
+    # ========================================================================
+    # Session Recording Operations (v1.1)
+    # ========================================================================
+
+    def save_session_recording(self, session_name: str, events: List[Dict],
+                               description: str = None, duration_seconds: int = 0) -> int:
+        """Save a session recording"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            events_json = json.dumps(events)
+            event_count = len(events)
+
+            cursor.execute("""
+                INSERT INTO session_recordings
+                (session_name, description, events, duration_seconds, event_count)
+                VALUES (?, ?, ?, ?, ?)
+            """, (session_name, description, events_json, duration_seconds, event_count))
+
+            return cursor.lastrowid
+
+    def get_session_recording(self, recording_id: int) -> Optional[Dict]:
+        """Get a session recording by ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, session_name, description, events, duration_seconds,
+                       event_count, created_at
+                FROM session_recordings
+                WHERE id = ?
+            """, (recording_id,))
+
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'id': row[0],
+                    'session_name': row[1],
+                    'description': row[2],
+                    'events': json.loads(row[3]),
+                    'duration_seconds': row[4],
+                    'event_count': row[5],
+                    'created_at': row[6]
+                }
+            return None
+
+    def list_session_recordings(self, limit: int = 50) -> List[Dict]:
+        """List all session recordings"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, session_name, description, duration_seconds,
+                       event_count, created_at
+                FROM session_recordings
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+
+            recordings = []
+            for row in cursor.fetchall():
+                recordings.append({
+                    'id': row[0],
+                    'session_name': row[1],
+                    'description': row[2],
+                    'duration_seconds': row[3],
+                    'event_count': row[4],
+                    'created_at': row[5]
+                })
+
+            return recordings
+
+    def delete_session_recording(self, recording_id: int) -> bool:
+        """Delete a session recording"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM session_recordings WHERE id = ?
+            """, (recording_id,))
+            return cursor.rowcount > 0
 
     # ========================================================================
     # Utility Operations
