@@ -59,6 +59,15 @@ from .healthcare_simulator import (
     MedicalShift
 )
 
+from .social_domestic_simulator import (
+    SocialDomesticSimulator,
+    ServiceWorker,
+    ServiceTask,
+    Client,
+    ServiceLocation,
+    ServiceShift
+)
+
 __all__ = [
     # Base classes
     "ProfessionalSimulator",
@@ -102,4 +111,12 @@ __all__ = [
     "Hospital",
     "MedicalEquipment",
     "MedicalShift",
+
+    # Social & Domestic Services
+    "SocialDomesticSimulator",
+    "ServiceWorker",
+    "ServiceTask",
+    "Client",
+    "ServiceLocation",
+    "ServiceShift",
 ]
