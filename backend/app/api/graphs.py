@@ -1,11 +1,11 @@
 """
 Graph API Endpoints
-Manage communication graphs and execution
+Manage communication graphs and execution with database persistence
 Based on TECHNICAL_SPEC_PART3_API.md
 """
 
-from typing import Dict
-from fastapi import APIRouter, HTTPException, status
+from typing import Dict, List
+from fastapi import APIRouter, HTTPException, status, Depends
 
 from app.domain.entities import CommunicationGraph, GraphExecution, Connection
 from app.schemas.graph import (
@@ -16,11 +16,8 @@ from app.schemas.graph import (
     ExecutionStartRequest,
     ExecutionResponse,
 )
-
-# In-memory storage for MVP
-# TODO: Replace with database in Phase 1
-graphs_db: Dict[str, CommunicationGraph] = {}
-executions_db: Dict[str, GraphExecution] = {}
+from app.infrastructure.repositories import GraphRepository, ExecutionRepository
+from app.core.dependencies import get_graph_repository, get_execution_repository
 
 router = APIRouter(prefix="/graphs", tags=["graphs"])
 
@@ -73,7 +70,10 @@ def execution_to_response(execution: GraphExecution) -> ExecutionResponse:
     summary="Create Graph",
     description="Create a communication graph for multi-agent coordination"
 )
-async def create_graph(request: GraphCreateRequest) -> GraphResponse:
+async def create_graph(
+    request: GraphCreateRequest,
+    repo: GraphRepository = Depends(get_graph_repository)
+) -> GraphResponse:
     """Create a new communication graph"""
     # Create domain entity
     graph = CommunicationGraph(
@@ -92,8 +92,15 @@ async def create_graph(request: GraphCreateRequest) -> GraphResponse:
         )
         graph.add_edge(connection)
 
-    # Store in database
-    graphs_db[graph.id] = graph
+    # Save to database
+    try:
+        graph_model = await repo.create_graph(graph)
+        graph = repo.to_domain(graph_model)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create graph: {str(e)}"
+        )
 
     return graph_to_response(graph)
 
@@ -104,10 +111,20 @@ async def create_graph(request: GraphCreateRequest) -> GraphResponse:
     summary="List Graphs",
     description="Get all communication graphs"
 )
-async def list_graphs() -> GraphListResponse:
+async def list_graphs(
+    repo: GraphRepository = Depends(get_graph_repository)
+) -> GraphListResponse:
     """List all graphs"""
-    graphs = [graph_to_response(graph) for graph in graphs_db.values()]
-    return GraphListResponse(graphs=graphs, total=len(graphs))
+    try:
+        graph_models = await repo.get_all_with_edges()
+        graphs = [repo.to_domain(model) for model in graph_models]
+        graph_responses = [graph_to_response(graph) for graph in graphs]
+        return GraphListResponse(graphs=graph_responses, total=len(graph_responses))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list graphs: {str(e)}"
+        )
 
 
 @router.get(
@@ -116,15 +133,27 @@ async def list_graphs() -> GraphListResponse:
     summary="Get Graph",
     description="Get graph by ID"
 )
-async def get_graph(graph_id: str) -> GraphResponse:
+async def get_graph(
+    graph_id: str,
+    repo: GraphRepository = Depends(get_graph_repository)
+) -> GraphResponse:
     """Get graph by ID"""
-    graph = graphs_db.get(graph_id)
-    if not graph:
+    try:
+        graph_model = await repo.get_with_edges(graph_id)
+        if not graph_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph {graph_id} not found"
+            )
+        graph = repo.to_domain(graph_model)
+        return graph_to_response(graph)
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Graph {graph_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get graph: {str(e)}"
         )
-    return graph_to_response(graph)
 
 
 @router.post(
@@ -136,52 +165,76 @@ async def get_graph(graph_id: str) -> GraphResponse:
 )
 async def execute_graph(
     graph_id: str,
-    request: ExecutionStartRequest
+    request: ExecutionStartRequest,
+    graph_repo: GraphRepository = Depends(get_graph_repository),
+    exec_repo: ExecutionRepository = Depends(get_execution_repository)
 ) -> ExecutionResponse:
     """Start graph execution"""
-    graph = graphs_db.get(graph_id)
-    if not graph:
+    try:
+        # Check if graph exists
+        graph_model = await graph_repo.get_with_edges(graph_id)
+        if not graph_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph {graph_id} not found"
+            )
+
+        # Create execution
+        execution = GraphExecution(graph_id=graph_id)
+        execution.start()
+
+        # Save to database
+        exec_model = await exec_repo.create_execution(execution)
+        execution = exec_repo.to_domain(exec_model)
+
+        # In production, this would trigger async execution
+        # For MVP, we just return the execution object
+        # TODO: Implement actual graph execution logic in Phase 4
+
+        return execution_to_response(execution)
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Graph {graph_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to execute graph: {str(e)}"
         )
-
-    # Create execution
-    execution = GraphExecution(graph_id=graph_id)
-    execution.start()
-
-    # Store in database
-    executions_db[execution.id] = execution
-
-    # In production, this would trigger async execution
-    # For MVP, we just return the execution object
-    # TODO: Implement actual graph execution logic in Phase 2
-
-    return execution_to_response(execution)
 
 
 @router.get(
     "/{graph_id}/executions",
-    response_model=list[ExecutionResponse],
+    response_model=List[ExecutionResponse],
     summary="List Graph Executions",
     description="Get all executions for a graph"
 )
-async def list_graph_executions(graph_id: str) -> list[ExecutionResponse]:
+async def list_graph_executions(
+    graph_id: str,
+    graph_repo: GraphRepository = Depends(get_graph_repository),
+    exec_repo: ExecutionRepository = Depends(get_execution_repository)
+) -> List[ExecutionResponse]:
     """List all executions for a graph"""
-    graph = graphs_db.get(graph_id)
-    if not graph:
+    try:
+        # Check if graph exists
+        graph_exists = await graph_repo.exists(graph_id)
+        if not graph_exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph {graph_id} not found"
+            )
+
+        # Get executions
+        exec_models = await exec_repo.get_by_graph(graph_id)
+        executions = [exec_repo.to_domain(model) for model in exec_models]
+        return [execution_to_response(exec) for exec in executions]
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Graph {graph_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list executions: {str(e)}"
         )
-
-    executions = [
-        execution_to_response(exec)
-        for exec in executions_db.values()
-        if exec.graph_id == graph_id
-    ]
-
-    return executions
 
 
 @router.delete(
@@ -190,14 +243,30 @@ async def list_graph_executions(graph_id: str) -> list[ExecutionResponse]:
     summary="Delete Graph",
     description="Remove graph from system"
 )
-async def delete_graph(graph_id: str):
+async def delete_graph(
+    graph_id: str,
+    repo: GraphRepository = Depends(get_graph_repository)
+):
     """Delete graph"""
-    if graph_id not in graphs_db:
+    try:
+        # Check if graph exists
+        exists = await repo.exists(graph_id)
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Graph {graph_id} not found"
+            )
+
+        # Delete from database (cascades to edges and executions)
+        await repo.delete(graph_id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Graph {graph_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete graph: {str(e)}"
         )
-    del graphs_db[graph_id]
 
 
 # Execution endpoints
@@ -210,15 +279,27 @@ executions_router = APIRouter(prefix="/executions", tags=["executions"])
     summary="Get Execution",
     description="Get execution status by ID"
 )
-async def get_execution(execution_id: str) -> ExecutionResponse:
+async def get_execution(
+    execution_id: str,
+    repo: ExecutionRepository = Depends(get_execution_repository)
+) -> ExecutionResponse:
     """Get execution by ID"""
-    execution = executions_db.get(execution_id)
-    if not execution:
+    try:
+        exec_model = await repo.get_by_id(execution_id)
+        if not exec_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Execution {execution_id} not found"
+            )
+        execution = repo.to_domain(exec_model)
+        return execution_to_response(execution)
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Execution {execution_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get execution: {str(e)}"
         )
-    return execution_to_response(execution)
 
 
 @executions_router.put(
@@ -227,20 +308,40 @@ async def get_execution(execution_id: str) -> ExecutionResponse:
     summary="Cancel Execution",
     description="Cancel a running execution"
 )
-async def cancel_execution(execution_id: str) -> ExecutionResponse:
+async def cancel_execution(
+    execution_id: str,
+    repo: ExecutionRepository = Depends(get_execution_repository)
+) -> ExecutionResponse:
     """Cancel execution"""
-    execution = executions_db.get(execution_id)
-    if not execution:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Execution {execution_id} not found"
+    try:
+        # Get execution
+        exec_model = await repo.get_by_id(execution_id)
+        if not exec_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Execution {execution_id} not found"
+            )
+
+        # Convert to domain entity
+        execution = repo.to_domain(exec_model)
+
+        # Cancel execution (domain logic)
+        execution.fail()
+
+        # Update in database
+        exec_model = await repo.update(
+            execution_id,
+            status=execution.status.value,
+            completed_at=execution.completed_at
         )
 
-    # Cancel execution
-    execution.fail()
+        execution = repo.to_domain(exec_model)
+        return execution_to_response(execution)
 
-    return execution_to_response(execution)
-
-
-# Register both routers
-routers = [router, executions_router]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel execution: {str(e)}"
+        )

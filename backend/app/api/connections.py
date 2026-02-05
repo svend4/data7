@@ -1,23 +1,17 @@
 """
 Connection API Endpoints
-Manage connections between agents
+Manage connections between agents with database persistence
 Based on TECHNICAL_SPEC_PART3_API.md
 """
 
 from typing import List, Dict, Optional
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Depends
 
 from app.domain.entities import Connection
 from app.domain.value_objects import ConnectionStatus
 from app.schemas.connection import ConnectionCreateRequest, ConnectionResponse
-
-# In-memory storage for MVP
-# TODO: Replace with database in Phase 1
-connections_db: Dict[str, Connection] = {}
-
-# Simple socket allocation (1-100)
-# In production, this would be managed by SwitchboardService
-allocated_sockets: set = set()
+from app.infrastructure.repositories import ConnectionRepository
+from app.core.dependencies import get_connection_repository
 
 router = APIRouter(prefix="/connections", tags=["connections"])
 
@@ -39,19 +33,13 @@ def connection_to_response(conn: Connection) -> ConnectionResponse:
     )
 
 
-def allocate_socket() -> Optional[int]:
+async def allocate_socket(repo: ConnectionRepository) -> Optional[int]:
     """Allocate next available socket (1-100)"""
+    allocated_sockets = await repo.get_allocated_sockets()
     for socket_num in range(1, 101):
         if socket_num not in allocated_sockets:
-            allocated_sockets.add(socket_num)
             return socket_num
     return None
-
-
-def free_socket(socket_num: int) -> None:
-    """Free a socket"""
-    if socket_num in allocated_sockets:
-        allocated_sockets.remove(socket_num)
 
 
 @router.post(
@@ -61,7 +49,10 @@ def free_socket(socket_num: int) -> None:
     summary="Create Connection",
     description="Create a connection between two agents"
 )
-async def create_connection(request: ConnectionCreateRequest) -> ConnectionResponse:
+async def create_connection(
+    request: ConnectionCreateRequest,
+    repo: ConnectionRepository = Depends(get_connection_repository)
+) -> ConnectionResponse:
     """Create a new connection"""
     # Validate agent IDs are different
     if request.from_agent_id == request.to_agent_id:
@@ -69,9 +60,6 @@ async def create_connection(request: ConnectionCreateRequest) -> ConnectionRespo
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot connect agent to itself"
         )
-
-    # Check if agents exist (in production, verify against agents_db)
-    # For MVP, we skip this check
 
     # Create domain entity
     connection = Connection(
@@ -81,8 +69,15 @@ async def create_connection(request: ConnectionCreateRequest) -> ConnectionRespo
         metadata=request.metadata,
     )
 
-    # Store in database
-    connections_db[connection.id] = connection
+    # Save to database
+    try:
+        conn_model = await repo.create_connection(connection)
+        connection = repo.to_domain(conn_model)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create connection: {str(e)}"
+        )
 
     return connection_to_response(connection)
 
@@ -96,20 +91,34 @@ async def create_connection(request: ConnectionCreateRequest) -> ConnectionRespo
 async def list_connections(
     status_filter: Optional[str] = Query(None, alias="status"),
     agent_id: Optional[str] = Query(None),
+    repo: ConnectionRepository = Depends(get_connection_repository)
 ) -> List[ConnectionResponse]:
     """List all connections with optional filters"""
-    connections = list(connections_db.values())
+    try:
+        # Convert status string to enum if provided
+        status_enum = ConnectionStatus(status_filter) if status_filter else None
 
-    # Apply filters
-    if status_filter:
-        connections = [c for c in connections if c.status.value == status_filter]
-    if agent_id:
-        connections = [
-            c for c in connections
-            if c.from_agent_id == agent_id or c.to_agent_id == agent_id
-        ]
+        # Get connections with filters
+        conn_models = await repo.get_with_filters(
+            status=status_enum,
+            agent_id=agent_id,
+            skip=0,
+            limit=100
+        )
 
-    return [connection_to_response(conn) for conn in connections]
+        connections = [repo.to_domain(model) for model in conn_models]
+        return [connection_to_response(conn) for conn in connections]
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status value: {status_filter}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list connections: {str(e)}"
+        )
 
 
 @router.get(
@@ -118,15 +127,27 @@ async def list_connections(
     summary="Get Connection",
     description="Get connection by ID"
 )
-async def get_connection(connection_id: str) -> ConnectionResponse:
+async def get_connection(
+    connection_id: str,
+    repo: ConnectionRepository = Depends(get_connection_repository)
+) -> ConnectionResponse:
     """Get connection by ID"""
-    connection = connections_db.get(connection_id)
-    if not connection:
+    try:
+        conn_model = await repo.get_by_id(connection_id)
+        if not conn_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Connection {connection_id} not found"
+            )
+        connection = repo.to_domain(conn_model)
+        return connection_to_response(connection)
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Connection {connection_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get connection: {str(e)}"
         )
-    return connection_to_response(connection)
 
 
 @router.put(
@@ -135,40 +156,61 @@ async def get_connection(connection_id: str) -> ConnectionResponse:
     summary="Establish Connection",
     description="Establish connection and allocate sockets"
 )
-async def establish_connection(connection_id: str) -> ConnectionResponse:
+async def establish_connection(
+    connection_id: str,
+    repo: ConnectionRepository = Depends(get_connection_repository)
+) -> ConnectionResponse:
     """Establish connection and allocate sockets"""
-    connection = connections_db.get(connection_id)
-    if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Connection {connection_id} not found"
-        )
-
-    # Allocate sockets
-    socket_from = allocate_socket()
-    socket_to = allocate_socket()
-
-    if socket_from is None or socket_to is None:
-        # Free any allocated socket
-        if socket_from:
-            free_socket(socket_from)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No available sockets on switchboard"
-        )
-
     try:
-        connection.establish(socket_from, socket_to)
-    except ValueError as e:
-        # Free sockets on error
-        free_socket(socket_from)
-        free_socket(socket_to)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        # Get connection
+        conn_model = await repo.get_by_id(connection_id)
+        if not conn_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Connection {connection_id} not found"
+            )
+
+        # Convert to domain entity
+        connection = repo.to_domain(conn_model)
+
+        # Allocate sockets
+        socket_from = await allocate_socket(repo)
+        socket_to = await allocate_socket(repo)
+
+        if socket_from is None or socket_to is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="No available sockets on switchboard"
+            )
+
+        # Establish connection (domain logic)
+        try:
+            connection.establish(socket_from, socket_to)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+
+        # Update in database
+        conn_model = await repo.update(
+            connection_id,
+            status=connection.status.value,
+            socket_from=connection.socket_from,
+            socket_to=connection.socket_to,
+            established_at=connection.established_at
         )
 
-    return connection_to_response(connection)
+        connection = repo.to_domain(conn_model)
+        return connection_to_response(connection)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to establish connection: {str(e)}"
+        )
 
 
 @router.put(
@@ -177,30 +219,50 @@ async def establish_connection(connection_id: str) -> ConnectionResponse:
     summary="Disconnect Connection",
     description="Disconnect connection and free sockets"
 )
-async def disconnect_connection(connection_id: str) -> ConnectionResponse:
+async def disconnect_connection(
+    connection_id: str,
+    repo: ConnectionRepository = Depends(get_connection_repository)
+) -> ConnectionResponse:
     """Disconnect connection and free sockets"""
-    connection = connections_db.get(connection_id)
-    if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Connection {connection_id} not found"
-        )
-
-    # Free sockets
-    if connection.socket_from:
-        free_socket(connection.socket_from)
-    if connection.socket_to:
-        free_socket(connection.socket_to)
-
     try:
-        connection.disconnect()
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        # Get connection
+        conn_model = await repo.get_by_id(connection_id)
+        if not conn_model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Connection {connection_id} not found"
+            )
+
+        # Convert to domain entity
+        connection = repo.to_domain(conn_model)
+
+        # Disconnect (domain logic)
+        try:
+            connection.disconnect()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+
+        # Update in database
+        # Sockets will be freed when status changes to DISCONNECTED
+        conn_model = await repo.update(
+            connection_id,
+            status=connection.status.value,
+            closed_at=connection.closed_at
         )
 
-    return connection_to_response(connection)
+        connection = repo.to_domain(conn_model)
+        return connection_to_response(connection)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to disconnect connection: {str(e)}"
+        )
 
 
 @router.delete(
@@ -209,22 +271,30 @@ async def disconnect_connection(connection_id: str) -> ConnectionResponse:
     summary="Delete Connection",
     description="Remove connection from system"
 )
-async def delete_connection(connection_id: str):
+async def delete_connection(
+    connection_id: str,
+    repo: ConnectionRepository = Depends(get_connection_repository)
+):
     """Delete connection"""
-    connection = connections_db.get(connection_id)
-    if not connection:
+    try:
+        # Check if connection exists
+        exists = await repo.exists(connection_id)
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Connection {connection_id} not found"
+            )
+
+        # Delete from database (sockets automatically freed by query)
+        await repo.delete(connection_id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Connection {connection_id} not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete connection: {str(e)}"
         )
-
-    # Free sockets if allocated
-    if connection.socket_from:
-        free_socket(connection.socket_from)
-    if connection.socket_to:
-        free_socket(connection.socket_to)
-
-    del connections_db[connection_id]
 
 
 @router.get(
@@ -233,35 +303,15 @@ async def delete_connection(connection_id: str):
     summary="Connection Statistics",
     description="Get aggregate statistics for all connections"
 )
-async def get_connection_stats() -> Dict:
+async def get_connection_stats(
+    repo: ConnectionRepository = Depends(get_connection_repository)
+) -> Dict:
     """Get connection statistics"""
-    connections = list(connections_db.values())
-    total = len(connections)
-
-    if total == 0:
-        return {
-            "total_connections": 0,
-            "connected": 0,
-            "disconnected": 0,
-            "transmitting": 0,
-            "available_sockets": 100,
-            "avg_bandwidth": 0.0,
-            "avg_latency_ms": 0.0,
-        }
-
-    connected = sum(1 for c in connections if c.status == ConnectionStatus.CONNECTED)
-    disconnected = sum(1 for c in connections if c.status == ConnectionStatus.DISCONNECTED)
-    transmitting = sum(1 for c in connections if c.status == ConnectionStatus.TRANSMITTING)
-
-    avg_bandwidth = sum(c.bandwidth for c in connections) / total
-    avg_latency = sum(c.latency_ms for c in connections) / total
-
-    return {
-        "total_connections": total,
-        "connected": connected,
-        "disconnected": disconnected,
-        "transmitting": transmitting,
-        "available_sockets": 100 - len(allocated_sockets),
-        "avg_bandwidth": round(avg_bandwidth, 3),
-        "avg_latency_ms": round(avg_latency, 2),
-    }
+    try:
+        stats = await repo.get_statistics()
+        return stats
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get statistics: {str(e)}"
+        )
