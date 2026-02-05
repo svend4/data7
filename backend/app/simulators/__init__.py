@@ -30,6 +30,16 @@ from .logistics_simulator import (
     Route
 )
 
+from .retail_simulator import (
+    RetailSimulator,
+    ServiceAgent,
+    ServiceTask,
+    Customer,
+    Product,
+    Store,
+    Shift
+)
+
 __all__ = [
     # Base classes
     "ProfessionalSimulator",
@@ -47,4 +57,13 @@ __all__ = [
     "Warehouse",
     "Vehicle",
     "Route",
+
+    # Retail
+    "RetailSimulator",
+    "ServiceAgent",
+    "ServiceTask",
+    "Customer",
+    "Product",
+    "Store",
+    "Shift",
 ]

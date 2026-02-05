@@ -366,3 +366,285 @@ async def simulator_info():
             "mmo_xp": "Performance Metrics"
         }
     }
+
+
+# ============================================================================
+# Retail Simulator Endpoints
+# ============================================================================
+
+# Import retail simulator
+from app.simulators.retail_simulator import (
+    RetailSimulator,
+    ServiceAgent,
+    Customer,
+    Product,
+    Store
+)
+
+
+class CreateRetailScenarioRequest(BaseModel):
+    """Request to create retail scenario"""
+    name: str = Field(..., description="Scenario name")
+    description: str = Field(..., description="Scenario description")
+    num_agents: int = Field(3, ge=1, le=20, description="Number of service agents")
+    num_customers: int = Field(30, ge=1, le=200, description="Number of customers")
+    num_products: int = Field(20, ge=5, le=100, description="Number of products")
+    store_type: str = Field("retail", description="Type of store")
+
+
+class RetailScenarioResponse(BaseModel):
+    """Response with retail scenario details"""
+    scenario_id: str
+    name: str
+    description: str
+    num_agents: int
+    num_customers: int
+    num_products: int
+    store_type: str
+    objectives: List[Dict[str, Any]]
+    status: str
+
+
+class SimulateShiftRequest(BaseModel):
+    """Request to simulate retail shift"""
+    scenario_id: str = Field(..., description="Scenario ID")
+    shift_duration: int = Field(480, ge=60, le=720, description="Shift duration in minutes")
+
+
+class RetailSimulationResponse(BaseModel):
+    """Response with retail simulation results"""
+    scenario_id: str
+    scenario_name: str
+    completion_score: float
+    total_performance: float
+    tasks: Dict[str, int]
+    professionals: List[Dict[str, Any]]
+    retail_metrics: Dict[str, float]
+
+
+# Global state for retail simulators
+retail_simulators: Dict[str, RetailSimulator] = {}
+
+
+@router.post("/retail/scenario", response_model=RetailScenarioResponse)
+async def create_retail_scenario(request: CreateRetailScenarioRequest):
+    """
+    Create new retail scenario
+
+    Creates a retail scenario with service agents, customers, products, and store.
+    Simulates customer service, sales, and inventory management.
+
+    Example:
+    ```json
+    {
+        "name": "Monday Shift",
+        "description": "Regular Monday retail operations",
+        "num_agents": 3,
+        "num_customers": 30,
+        "num_products": 20,
+        "store_type": "retail"
+    }
+    ```
+    """
+    # Create simulator
+    simulator = RetailSimulator()
+
+    # Create scenario
+    scenario = simulator.create_retail_scenario(
+        name=request.name,
+        description=request.description,
+        num_agents=request.num_agents,
+        num_customers=request.num_customers,
+        num_products=request.num_products,
+        store_type=request.store_type
+    )
+
+    # Store simulator
+    retail_simulators[scenario.id] = simulator
+
+    return RetailScenarioResponse(
+        scenario_id=scenario.id,
+        name=scenario.name,
+        description=scenario.description,
+        num_agents=len(scenario.professionals),
+        num_customers=len(simulator.customers),
+        num_products=len(simulator.products),
+        store_type=request.store_type,
+        objectives=scenario.objectives,
+        status="created"
+    )
+
+
+@router.post("/retail/simulate", response_model=RetailSimulationResponse)
+async def simulate_retail_shift(request: SimulateShiftRequest):
+    """
+    Simulate retail shift
+
+    Simulates a complete retail shift with customer service, sales,
+    and performance tracking.
+
+    Example:
+    ```json
+    {
+        "scenario_id": "retail_0",
+        "shift_duration": 480
+    }
+    ```
+    """
+    # Get simulator
+    if request.scenario_id not in retail_simulators:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    simulator = retail_simulators[request.scenario_id]
+    scenario = simulator.scenarios[request.scenario_id]
+
+    # Simulate shift
+    report = simulator.simulate_shift(scenario, request.shift_duration)
+
+    return RetailSimulationResponse(
+        scenario_id=report["scenario_id"],
+        scenario_name=report["scenario_name"],
+        completion_score=report["completion_score"],
+        total_performance=report["total_performance"],
+        tasks=report["tasks"],
+        professionals=report["professionals"],
+        retail_metrics=report["retail_metrics"]
+    )
+
+
+@router.get("/retail/report/{scenario_id}")
+async def get_retail_performance_report(scenario_id: str):
+    """
+    Get performance report for retail scenario
+
+    Returns detailed performance metrics for completed retail scenario.
+    """
+    # Get simulator
+    if scenario_id not in retail_simulators:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    simulator = retail_simulators[scenario_id]
+    scenario = simulator.scenarios[scenario_id]
+
+    # Generate report
+    report = simulator.get_performance_report(scenario)
+
+    # Add retail-specific metrics if available
+    if simulator.customers:
+        report["customer_metrics"] = {
+            "total_customers": len(simulator.customers),
+            "avg_satisfaction": sum(c.satisfaction for c in simulator.customers) / len(simulator.customers),
+            "happy_customers": sum(1 for c in simulator.customers if c.satisfaction > 0.8),
+            "unhappy_customers": sum(1 for c in simulator.customers if c.satisfaction < 0.5)
+        }
+
+    if simulator.products:
+        report["product_metrics"] = {
+            "total_products": len(simulator.products),
+            "products_sold": sum(p.metadata["sales_count"] for p in simulator.products),
+            "total_revenue": sum(p.metadata["revenue"] for p in simulator.products),
+            "best_seller": max(simulator.products, key=lambda p: p.metadata["sales_count"]).name
+        }
+
+    return report
+
+
+# Update domains endpoint to include retail
+@router.get("/domains", response_model=List[DomainInfo])
+async def list_domains():
+    """
+    List available professional simulator domains
+
+    Returns all available domains with their implementation status.
+    """
+    domains = [
+        DomainInfo(
+            id="logistics",
+            name="Logistics and Transport",
+            description="Delivery, routing, and fleet management simulation",
+            status="operational",
+            completion_percentage=60
+        ),
+        DomainInfo(
+            id="retail",
+            name="Retail and Service",
+            description="Customer service, sales, and inventory management",
+            status="operational",
+            completion_percentage=40
+        ),
+        DomainInfo(
+            id="manufacturing",
+            name="Manufacturing and Production",
+            description="Assembly lines, quality control, and production optimization",
+            status="planned",
+            completion_percentage=0
+        ),
+        DomainInfo(
+            id="healthcare",
+            name="Healthcare and Medical",
+            description="Diagnosis, treatment, and patient care simulation",
+            status="planned",
+            completion_percentage=0
+        ),
+    ]
+
+    return domains
+
+
+# Update simulator info endpoint
+@router.get("/")
+async def simulator_info():
+    """
+    Get Professional Simulator information
+
+    Returns general information about the simulator and its capabilities.
+    """
+    return {
+        "name": "Professional Simulator",
+        "version": "1.0",
+        "paradigm": "Paradigm 2 - Professional Simulator",
+        "description": "Transform MMO mechanics into professional training simulations",
+        "domains": {
+            "logistics": {
+                "status": "operational",
+                "completion": "60%",
+                "features": [
+                    "Multi-depot TSP optimization",
+                    "Vehicle routing",
+                    "Performance tracking",
+                    "Real-time simulation"
+                ]
+            },
+            "retail": {
+                "status": "operational",
+                "completion": "40%",
+                "features": [
+                    "Customer service simulation",
+                    "Sales and inventory tracking",
+                    "Queue management",
+                    "Satisfaction metrics"
+                ]
+            },
+            "manufacturing": {
+                "status": "planned",
+                "completion": "0%"
+            },
+            "healthcare": {
+                "status": "planned",
+                "completion": "0%"
+            }
+        },
+        "use_cases": [
+            "Employee training",
+            "Process optimization",
+            "Performance evaluation",
+            "Scenario planning"
+        ],
+        "mappings": {
+            "mmo_character": "Professional Role",
+            "mmo_quest": "Professional Task",
+            "mmo_location": "Work Location",
+            "mmo_item": "Resource/Tool",
+            "mmo_xp": "Performance Metrics"
+        }
+    }
