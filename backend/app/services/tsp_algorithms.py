@@ -912,3 +912,583 @@ class AntColonyTSP:
         for i in range(len(route) - 1):
             distance += self.distance_matrix.get((route[i], route[i+1]), float('inf'))
         return distance
+
+
+# ============================================================================
+# Hierarchical TSP
+# ============================================================================
+
+@dataclass
+class TSPCluster:
+    """Cluster of nodes in hierarchical TSP"""
+    id: str
+    nodes: List[TSPNode]
+    level: int = 0  # Hierarchy level
+    parent_cluster: Optional[str] = None
+    metadata: Dict = field(default_factory=dict)
+
+
+class HierarchicalTSP:
+    """
+    Hierarchical TSP solver
+
+    Problem: TSP with hierarchy - clusters of nodes at different levels
+    Goal: Optimize route respecting hierarchy
+
+    Use case: Dissertation structure (sections → subsections → paragraphs)
+
+    Hierarchy levels:
+    - Level 0: Chapters
+    - Level 1: Sections within chapters
+    - Level 2: Subsections within sections
+    """
+
+    def __init__(
+        self,
+        clusters: List[TSPCluster],
+        distance_matrix: Dict[Tuple[str, str], float],
+        inter_cluster_distance: Optional[Dict[Tuple[str, str], float]] = None
+    ):
+        self.clusters = clusters
+        self.distance_matrix = distance_matrix
+        self.inter_cluster_distance = inter_cluster_distance or {}
+
+    def solve(
+        self,
+        algorithm: str = "top_down"
+    ) -> TSPSolution:
+        """
+        Solve Hierarchical TSP
+
+        Args:
+            algorithm: Solution algorithm
+                - "top_down": Solve top level first, then sub-levels
+                - "bottom_up": Solve bottom levels, then aggregate
+                - "integrated": Solve all levels simultaneously
+
+        Returns:
+            TSPSolution with hierarchical route
+        """
+        if algorithm == "top_down":
+            return self._solve_top_down()
+        elif algorithm == "bottom_up":
+            return self._solve_bottom_up()
+        else:
+            return self._solve_integrated()
+
+    def _solve_top_down(self) -> TSPSolution:
+        """
+        Top-down hierarchical solving
+
+        1. Solve TSP for top-level clusters
+        2. For each cluster in order, solve TSP for nodes within
+        """
+        # Group clusters by level
+        levels: Dict[int, List[TSPCluster]] = {}
+        for cluster in self.clusters:
+            if cluster.level not in levels:
+                levels[cluster.level] = []
+            levels[cluster.level].append(cluster)
+
+        if not levels:
+            return TSPSolution(
+                routes=[[]],
+                total_distance=0.0,
+                total_cost=0.0,
+                total_time=0.0,
+                metadata={"algorithm": "hierarchical_top_down"}
+            )
+
+        # Start with highest level (smallest number)
+        top_clusters = levels[min(levels.keys())]
+        cluster_order = self._solve_cluster_order(top_clusters)
+
+        # Now solve within each cluster in order
+        full_route = []
+        total_distance = 0.0
+        prev_last_node = None
+
+        for cluster_id in cluster_order:
+            cluster = next((c for c in top_clusters if c.id == cluster_id), None)
+            if not cluster or not cluster.nodes:
+                continue
+
+            # Solve TSP within this cluster
+            if len(cluster.nodes) == 1:
+                node_order = [cluster.nodes[0].id]
+                cluster_distance = 0.0
+            else:
+                node_order, cluster_distance = self._solve_within_cluster(cluster)
+
+            # Add inter-cluster distance
+            if prev_last_node and node_order:
+                inter_dist = self.distance_matrix.get((prev_last_node, node_order[0]), 0.0)
+                total_distance += inter_dist
+
+            full_route.extend(node_order)
+            total_distance += cluster_distance
+
+            if node_order:
+                prev_last_node = node_order[-1]
+
+        return TSPSolution(
+            routes=[full_route],
+            total_distance=total_distance,
+            total_cost=total_distance,
+            total_time=total_distance,
+            metadata={
+                "algorithm": "hierarchical_top_down",
+                "num_clusters": len(top_clusters),
+                "hierarchy_levels": len(levels)
+            }
+        )
+
+    def _solve_bottom_up(self) -> TSPSolution:
+        """
+        Bottom-up hierarchical solving
+
+        1. Solve TSP within each lowest-level cluster
+        2. Aggregate to higher levels
+        3. Determine order of aggregated clusters
+        """
+        # Group by level
+        levels: Dict[int, List[TSPCluster]] = {}
+        for cluster in self.clusters:
+            if cluster.level not in levels:
+                levels[cluster.level] = []
+            levels[cluster.level].append(cluster)
+
+        if not levels:
+            return TSPSolution(
+                routes=[[]],
+                total_distance=0.0,
+                total_cost=0.0,
+                total_time=0.0,
+                metadata={"algorithm": "hierarchical_bottom_up"}
+            )
+
+        # Start with lowest level (largest number)
+        max_level = max(levels.keys())
+
+        # Solve each lowest-level cluster
+        cluster_solutions: Dict[str, Tuple[List[str], float]] = {}
+        for cluster in levels[max_level]:
+            if cluster.nodes:
+                route, distance = self._solve_within_cluster(cluster)
+                cluster_solutions[cluster.id] = (route, distance)
+
+        # Aggregate to top level
+        top_level = min(levels.keys())
+        top_clusters = levels[top_level]
+        cluster_order = self._solve_cluster_order(top_clusters)
+
+        # Build full route
+        full_route = []
+        total_distance = 0.0
+
+        for cluster_id in cluster_order:
+            # Find all sub-clusters
+            sub_clusters = self._find_sub_clusters(cluster_id, levels, max_level)
+
+            for sub_cluster_id in sub_clusters:
+                if sub_cluster_id in cluster_solutions:
+                    route, distance = cluster_solutions[sub_cluster_id]
+
+                    if full_route and route:
+                        # Add inter-cluster distance
+                        inter_dist = self.distance_matrix.get(
+                            (full_route[-1], route[0]), 0.0
+                        )
+                        total_distance += inter_dist
+
+                    full_route.extend(route)
+                    total_distance += distance
+
+        return TSPSolution(
+            routes=[full_route],
+            total_distance=total_distance,
+            total_cost=total_distance,
+            total_time=total_distance,
+            metadata={
+                "algorithm": "hierarchical_bottom_up",
+                "hierarchy_levels": len(levels)
+            }
+        )
+
+    def _solve_integrated(self) -> TSPSolution:
+        """
+        Integrated hierarchical solving
+
+        Solve all levels simultaneously with hierarchy constraints
+        """
+        # Flatten all nodes
+        all_nodes = []
+        node_to_cluster = {}
+
+        for cluster in self.clusters:
+            for node in cluster.nodes:
+                all_nodes.append(node)
+                node_to_cluster[node.id] = cluster.id
+
+        if not all_nodes:
+            return TSPSolution(
+                routes=[[]],
+                total_distance=0.0,
+                total_cost=0.0,
+                total_time=0.0,
+                metadata={"algorithm": "hierarchical_integrated"}
+            )
+
+        # Use nearest neighbor with cluster preference
+        route = [all_nodes[0].id]
+        unvisited = set(n.id for n in all_nodes[1:])
+        current = route[0]
+        current_cluster = node_to_cluster[current]
+
+        while unvisited:
+            # Prefer nodes in same cluster
+            same_cluster = [
+                n for n in unvisited
+                if node_to_cluster[n] == current_cluster
+            ]
+
+            if same_cluster:
+                # Find nearest in same cluster
+                nearest = min(
+                    same_cluster,
+                    key=lambda n: self.distance_matrix.get((current, n), float('inf'))
+                )
+            else:
+                # Find nearest in any cluster
+                nearest = min(
+                    unvisited,
+                    key=lambda n: self.distance_matrix.get((current, n), float('inf'))
+                )
+                current_cluster = node_to_cluster[nearest]
+
+            route.append(nearest)
+            unvisited.remove(nearest)
+            current = nearest
+
+        # Calculate distance
+        total_distance = sum(
+            self.distance_matrix.get((route[i], route[i+1]), 0.0)
+            for i in range(len(route) - 1)
+        )
+
+        return TSPSolution(
+            routes=[route],
+            total_distance=total_distance,
+            total_cost=total_distance,
+            total_time=total_distance,
+            metadata={"algorithm": "hierarchical_integrated"}
+        )
+
+    def _solve_cluster_order(self, clusters: List[TSPCluster]) -> List[str]:
+        """Solve TSP for cluster ordering"""
+        if len(clusters) <= 1:
+            return [c.id for c in clusters]
+
+        # Use nearest neighbor for cluster order
+        cluster_ids = [c.id for c in clusters]
+        route = [cluster_ids[0]]
+        unvisited = set(cluster_ids[1:])
+        current = route[0]
+
+        while unvisited:
+            # Find nearest cluster
+            nearest = min(
+                unvisited,
+                key=lambda c: self.inter_cluster_distance.get((current, c), 1.0)
+            )
+            route.append(nearest)
+            unvisited.remove(nearest)
+            current = nearest
+
+        return route
+
+    def _solve_within_cluster(
+        self,
+        cluster: TSPCluster
+    ) -> Tuple[List[str], float]:
+        """Solve TSP within a cluster"""
+        if not cluster.nodes:
+            return ([], 0.0)
+
+        if len(cluster.nodes) == 1:
+            return ([cluster.nodes[0].id], 0.0)
+
+        # Nearest neighbor within cluster
+        route = [cluster.nodes[0].id]
+        unvisited = set(n.id for n in cluster.nodes[1:])
+        current = route[0]
+
+        while unvisited:
+            nearest = min(
+                unvisited,
+                key=lambda n: self.distance_matrix.get((current, n), float('inf'))
+            )
+            route.append(nearest)
+            unvisited.remove(nearest)
+            current = nearest
+
+        # Calculate distance
+        distance = sum(
+            self.distance_matrix.get((route[i], route[i+1]), 0.0)
+            for i in range(len(route) - 1)
+        )
+
+        return (route, distance)
+
+    def _find_sub_clusters(
+        self,
+        parent_cluster_id: str,
+        levels: Dict[int, List[TSPCluster]],
+        max_level: int
+    ) -> List[str]:
+        """Find all sub-clusters of a parent cluster"""
+        # Simple implementation: assume direct parent-child relationship
+        sub_clusters = []
+
+        for level in range(1, max_level + 1):
+            if level in levels:
+                for cluster in levels[level]:
+                    if cluster.parent_cluster == parent_cluster_id:
+                        sub_clusters.append(cluster.id)
+
+        return sub_clusters if sub_clusters else [parent_cluster_id]
+
+
+# ============================================================================
+# Genetic Algorithm TSP
+# ============================================================================
+
+class GeneticAlgorithmTSP:
+    """
+    Genetic Algorithm for TSP
+
+    Uses evolutionary approach:
+    - Population: Set of candidate solutions (routes)
+    - Fitness: Route distance (lower is better)
+    - Selection: Tournament selection
+    - Crossover: Order crossover (OX)
+    - Mutation: Swap, inversion, or insertion
+    """
+
+    def __init__(
+        self,
+        nodes: List[TSPNode],
+        distance_matrix: Dict[Tuple[str, str], float],
+        population_size: int = 100,
+        generations: int = 500,
+        crossover_rate: float = 0.8,
+        mutation_rate: float = 0.2,
+        elitism_count: int = 5
+    ):
+        self.nodes = nodes
+        self.distance_matrix = distance_matrix
+        self.population_size = population_size
+        self.generations = generations
+        self.crossover_rate = crossover_rate
+        self.mutation_rate = mutation_rate
+        self.elitism_count = elitism_count
+
+    def optimize(self, initial_route: Optional[List[str]] = None) -> TSPSolution:
+        """
+        Run genetic algorithm optimization
+
+        Returns best solution found
+        """
+        if not self.nodes:
+            return TSPSolution(
+                routes=[[]],
+                total_distance=0.0,
+                total_cost=0.0,
+                total_time=0.0,
+                metadata={"algorithm": "genetic"}
+            )
+
+        # Initialize population
+        population = self._initialize_population(initial_route)
+
+        # Evolution loop
+        best_route = None
+        best_distance = float('inf')
+
+        for generation in range(self.generations):
+            # Evaluate fitness
+            fitness_scores = [
+                (route, self._calculate_fitness(route))
+                for route in population
+            ]
+            fitness_scores.sort(key=lambda x: x[1])  # Lower distance is better
+
+            # Track best
+            if fitness_scores[0][1] < best_distance:
+                best_route = fitness_scores[0][0][:]
+                best_distance = fitness_scores[0][1]
+
+            # Create new population
+            new_population = []
+
+            # Elitism: Keep best individuals
+            for i in range(min(self.elitism_count, len(fitness_scores))):
+                new_population.append(fitness_scores[i][0][:])
+
+            # Generate offspring
+            while len(new_population) < self.population_size:
+                # Selection
+                parent1 = self._tournament_selection(fitness_scores)
+                parent2 = self._tournament_selection(fitness_scores)
+
+                # Crossover
+                if random.random() < self.crossover_rate:
+                    child1, child2 = self._order_crossover(parent1, parent2)
+                else:
+                    child1, child2 = parent1[:], parent2[:]
+
+                # Mutation
+                if random.random() < self.mutation_rate:
+                    child1 = self._mutate(child1)
+                if random.random() < self.mutation_rate:
+                    child2 = self._mutate(child2)
+
+                new_population.append(child1)
+                if len(new_population) < self.population_size:
+                    new_population.append(child2)
+
+            population = new_population
+
+        return TSPSolution(
+            routes=[best_route],
+            total_distance=best_distance,
+            total_cost=best_distance,
+            total_time=best_distance,
+            metadata={
+                "algorithm": "genetic",
+                "generations": self.generations,
+                "population_size": self.population_size
+            }
+        )
+
+    def _initialize_population(
+        self,
+        initial_route: Optional[List[str]]
+    ) -> List[List[str]]:
+        """Initialize random population"""
+        population = []
+        node_ids = [n.id for n in self.nodes]
+
+        # Add initial route if provided
+        if initial_route:
+            population.append(initial_route[:])
+
+        # Generate random routes
+        while len(population) < self.population_size:
+            route = node_ids[:]
+            random.shuffle(route)
+            population.append(route)
+
+        return population
+
+    def _calculate_fitness(self, route: List[str]) -> float:
+        """Calculate fitness (route distance)"""
+        distance = 0.0
+        for i in range(len(route)):
+            j = (i + 1) % len(route)
+            distance += self.distance_matrix.get((route[i], route[j]), float('inf'))
+        return distance
+
+    def _tournament_selection(
+        self,
+        fitness_scores: List[Tuple[List[str], float]],
+        tournament_size: int = 3
+    ) -> List[str]:
+        """Tournament selection"""
+        tournament = random.sample(fitness_scores, min(tournament_size, len(fitness_scores)))
+        winner = min(tournament, key=lambda x: x[1])
+        return winner[0][:]
+
+    def _order_crossover(
+        self,
+        parent1: List[str],
+        parent2: List[str]
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Order Crossover (OX)
+
+        Preserves relative order of cities from parents
+        """
+        size = len(parent1)
+        if size < 2:
+            return parent1[:], parent2[:]
+
+        # Select crossover points
+        start = random.randint(0, size - 2)
+        end = random.randint(start + 1, size - 1)
+
+        # Create children
+        child1 = [None] * size
+        child2 = [None] * size
+
+        # Copy segment
+        child1[start:end+1] = parent1[start:end+1]
+        child2[start:end+1] = parent2[start:end+1]
+
+        # Fill remaining positions
+        self._fill_child(child1, parent2, end + 1)
+        self._fill_child(child2, parent1, end + 1)
+
+        return child1, child2
+
+    def _fill_child(
+        self,
+        child: List[Optional[str]],
+        parent: List[str],
+        start_pos: int
+    ) -> None:
+        """Fill child with remaining cities from parent"""
+        size = len(child)
+        current_pos = start_pos % size
+        parent_pos = start_pos % size
+
+        while None in child:
+            if parent[parent_pos] not in child:
+                child[current_pos] = parent[parent_pos]
+                current_pos = (current_pos + 1) % size
+
+            parent_pos = (parent_pos + 1) % size
+
+    def _mutate(self, route: List[str]) -> List[str]:
+        """
+        Mutate route using one of several strategies
+
+        - Swap: Exchange two cities
+        - Inversion: Reverse a segment
+        - Insertion: Move a city to a new position
+        """
+        mutated = route[:]
+        mutation_type = random.choice(['swap', 'inversion', 'insertion'])
+
+        if len(mutated) < 2:
+            return mutated
+
+        if mutation_type == 'swap':
+            # Swap two random positions
+            i, j = random.sample(range(len(mutated)), 2)
+            mutated[i], mutated[j] = mutated[j], mutated[i]
+
+        elif mutation_type == 'inversion':
+            # Reverse a segment
+            i = random.randint(0, len(mutated) - 2)
+            j = random.randint(i + 1, len(mutated) - 1)
+            mutated[i:j+1] = reversed(mutated[i:j+1])
+
+        else:  # insertion
+            # Move a city to a new position
+            i = random.randint(0, len(mutated) - 1)
+            j = random.randint(0, len(mutated) - 1)
+            city = mutated.pop(i)
+            mutated.insert(j, city)
+
+        return mutated
