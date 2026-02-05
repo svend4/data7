@@ -49,6 +49,16 @@ from .manufacturing_simulator import (
     ProductionShift
 )
 
+from .healthcare_simulator import (
+    HealthcareSimulator,
+    HealthcareWorker,
+    MedicalTask,
+    Patient,
+    Hospital,
+    MedicalEquipment,
+    MedicalShift
+)
+
 __all__ = [
     # Base classes
     "ProfessionalSimulator",
@@ -83,4 +93,13 @@ __all__ = [
     "Factory",
     "Machine",
     "ProductionShift",
+
+    # Healthcare
+    "HealthcareSimulator",
+    "HealthcareWorker",
+    "MedicalTask",
+    "Patient",
+    "Hospital",
+    "MedicalEquipment",
+    "MedicalShift",
 ]

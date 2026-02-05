@@ -34,6 +34,16 @@ from app.simulators.manufacturing_simulator import (
     ProductionShift
 )
 
+from app.simulators.healthcare_simulator import (
+    HealthcareSimulator,
+    HealthcareWorker,
+    MedicalTask,
+    Patient,
+    Hospital,
+    MedicalEquipment,
+    MedicalShift
+)
+
 
 # ============================================================================
 # Router
@@ -317,8 +327,8 @@ async def list_domains():
             id="healthcare",
             name="Healthcare and Medical",
             description="Diagnosis, treatment, and patient care simulation",
-            status="planned",
-            completion_percentage=0
+            status="operational",
+            completion_percentage=40
         ),
     ]
 
@@ -363,8 +373,14 @@ async def simulator_info():
                 ]
             },
             "healthcare": {
-                "status": "planned",
-                "completion": "0%"
+                "status": "operational",
+                "completion": "40%",
+                "features": [
+                    "Patient diagnosis and treatment",
+                    "Multi-role healthcare workers",
+                    "Vital signs monitoring",
+                    "Treatment outcome tracking"
+                ]
             }
         },
         "use_cases": [
@@ -714,7 +730,158 @@ async def get_manufacturing_report(scenario_id: str):
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 
-# Update domains endpoint to include retail and manufacturing
+# ============================================================================
+# Healthcare Simulator Endpoints
+# ============================================================================
+
+class CreateHealthcareScenarioRequest(BaseModel):
+    """Request to create healthcare scenario"""
+    name: str = Field(..., description="Scenario name")
+    description: str = Field(..., description="Scenario description")
+    num_doctors: int = Field(3, ge=1, le=20, description="Number of doctors")
+    num_nurses: int = Field(6, ge=1, le=40, description="Number of nurses")
+    num_patients: int = Field(20, ge=1, le=100, description="Number of patients")
+    hospital_type: str = Field("general", description="Type of hospital")
+
+
+class SimulateMedicalShiftRequest(BaseModel):
+    """Request to simulate medical shift"""
+    scenario_id: str = Field(..., description="Scenario ID")
+    shift_number: int = Field(1, ge=1, le=3, description="Shift number (1, 2, or 3)")
+    shift_duration: int = Field(8, ge=1, le=12, description="Shift duration in hours")
+
+
+class HealthcareScenarioResponse(BaseModel):
+    """Response for healthcare scenario creation"""
+    scenario_id: str
+    name: str
+    description: str
+    num_workers: int
+    num_patients: int
+    hospital_type: str
+    message: str = "Healthcare scenario created successfully"
+
+
+class MedicalShiftResponse(BaseModel):
+    """Response for medical shift simulation"""
+    shift_number: int
+    duration: int
+    workers: int
+    patients: Dict[str, int]
+    treatments: Dict[str, Any]
+    average_quality: float
+    tasks_completed: int
+
+
+class HealthcareReportResponse(BaseModel):
+    """Response for healthcare performance report"""
+    scenario_id: str
+    scenario_name: str
+    completion_score: float
+    success_rate: float
+    patients: Dict[str, Any]
+    workers: List[Dict[str, Any]]
+    equipment: Dict[str, int]
+    shifts_completed: int
+
+
+# In-memory storage for healthcare simulators
+healthcare_simulators: Dict[str, HealthcareSimulator] = {}
+
+
+@router.post("/healthcare/scenario", response_model=HealthcareScenarioResponse)
+async def create_healthcare_scenario(request: CreateHealthcareScenarioRequest):
+    """
+    Create a new healthcare scenario
+
+    Creates a hospital with doctors, nurses, and patients.
+    Patients have various conditions and require diagnosis and treatment.
+    """
+    try:
+        simulator = HealthcareSimulator()
+        scenario = simulator.create_healthcare_scenario(
+            name=request.name,
+            description=request.description,
+            num_doctors=request.num_doctors,
+            num_nurses=request.num_nurses,
+            num_patients=request.num_patients,
+            hospital_type=request.hospital_type
+        )
+
+        # Store simulator for later use
+        healthcare_simulators[scenario.id] = simulator
+
+        total_workers = len(scenario.professionals)
+
+        return HealthcareScenarioResponse(
+            scenario_id=scenario.id,
+            name=scenario.name,
+            description=scenario.description,
+            num_workers=total_workers,
+            num_patients=request.num_patients,
+            hospital_type=request.hospital_type
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating healthcare scenario: {str(e)}")
+
+
+@router.post("/healthcare/simulate", response_model=MedicalShiftResponse)
+async def simulate_medical_shift(request: SimulateMedicalShiftRequest):
+    """
+    Simulate a medical shift
+
+    Simulates doctors and nurses treating patients over a shift period.
+    Doctors diagnose and treat, nurses monitor vitals and administer medication.
+    """
+    if request.scenario_id not in healthcare_simulators:
+        raise HTTPException(status_code=404, detail="Healthcare scenario not found")
+
+    try:
+        simulator = healthcare_simulators[request.scenario_id]
+        scenario = simulator.scenarios[request.scenario_id]
+
+        # Simulate shift
+        report = simulator.simulate_medical_shift(
+            scenario=scenario,
+            shift_number=request.shift_number,
+            shift_duration=request.shift_duration
+        )
+
+        return MedicalShiftResponse(**report)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error simulating medical shift: {str(e)}")
+
+
+@router.get("/healthcare/report/{scenario_id}", response_model=HealthcareReportResponse)
+async def get_healthcare_report(scenario_id: str):
+    """
+    Get healthcare performance report
+
+    Returns comprehensive report including:
+    - Treatment success rates
+    - Patient outcomes (by condition)
+    - Healthcare worker performance (by role)
+    - Equipment status
+    - Overall quality metrics
+    """
+    if scenario_id not in healthcare_simulators:
+        raise HTTPException(status_code=404, detail="Healthcare scenario not found")
+
+    try:
+        simulator = healthcare_simulators[scenario_id]
+        scenario = simulator.scenarios[scenario_id]
+
+        report = simulator.get_performance_report(scenario)
+
+        return HealthcareReportResponse(**report)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+
+# Update domains endpoint to include all four domains
 @router.get("/domains", response_model=List[DomainInfo])
 async def list_domains():
     """
@@ -748,8 +915,8 @@ async def list_domains():
             id="healthcare",
             name="Healthcare and Medical",
             description="Diagnosis, treatment, and patient care simulation",
-            status="planned",
-            completion_percentage=0
+            status="operational",
+            completion_percentage=40
         ),
     ]
 
@@ -801,8 +968,14 @@ async def simulator_info():
                 ]
             },
             "healthcare": {
-                "status": "planned",
-                "completion": "0%"
+                "status": "operational",
+                "completion": "40%",
+                "features": [
+                    "Patient diagnosis and treatment",
+                    "Multi-role healthcare workers",
+                    "Vital signs monitoring",
+                    "Treatment outcome tracking"
+                ]
             }
         },
         "use_cases": [
