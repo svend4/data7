@@ -3,10 +3,13 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera, Environment, Grid } from '@react-three/drei'
 import { Switchboard3D } from './Switchboard3D'
 import { AgentOperator3D } from './AgentOperator3D'
+import { ConnectionCable3D } from './ConnectionCable3D'
 import { useAgentsStore } from '@/store/agents'
+import { useConnectionsStore } from '@/store/connections'
 
 export const Scene3D: React.FC = () => {
   const agents = useAgentsStore((state) => state.agents)
+  const connections = useConnectionsStore((state) => state.connections)
   const [autoRotate, setAutoRotate] = useState(false)
 
   return (
@@ -114,6 +117,20 @@ export const Scene3D: React.FC = () => {
               ]}
             />
           ))}
+
+          {/* Connection Cables */}
+          {connections.map((connection) => {
+            const fromAgent = agents.find((a) => a.id === connection.from_agent_id)
+            const toAgent = agents.find((a) => a.id === connection.to_agent_id)
+            return (
+              <ConnectionCable3D
+                key={connection.id}
+                connection={connection}
+                fromAgent={fromAgent}
+                toAgent={toAgent}
+              />
+            )
+          })}
 
           {/* Ground grid */}
           <Grid
