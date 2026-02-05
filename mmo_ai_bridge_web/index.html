@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MMO AI Bridge v0.85 - Interactive Web Interface</title>
+    <title>MMO AI Bridge v0.95 - Production Ready</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="animations.css">
     <style>
         * {
             margin: 0;
@@ -528,7 +529,7 @@
     <div class="container">
         <header>
             <h1>🎮 MMO AI Bridge</h1>
-            <p class="version">Version 0.85 - Enhanced Interactivity</p>
+            <p class="version">Version 0.95 - Production Ready</p>
             <div class="connection-status">
                 <div class="status-indicator" id="connection-indicator"></div>
                 <span id="connection-text">Connecting...</span>
@@ -539,6 +540,7 @@
             <button onclick="startTrainingSimulation()">▶️ Start Training</button>
             <button onclick="stopSimulation()">⏹️ Stop</button>
             <button onclick="exportScene()">📸 Export Scene</button>
+            <button onclick="window.location.href='stats.html'">📊 Statistics</button>
             <button onclick="clearCharacters()">🗑️ Clear All</button>
         </div>
 

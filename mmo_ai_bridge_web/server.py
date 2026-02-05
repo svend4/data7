@@ -1,10 +1,11 @@
 """
-MMO AI Bridge - Flask Web Server with WebSocket Support
+MMO AI Bridge - Flask Web Server with WebSocket Support & Database
 Provides REST API and real-time WebSocket updates for AI text → MMO visualization translation
+Includes persistent storage for character history and training sessions
 
 Author: AI Research Assistant
 Date: 2026-02-05
-Version: 0.85
+Version: 0.95
 """
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -14,6 +15,10 @@ import sys
 import os
 import time
 import threading
+import json
+import csv
+from io import StringIO
+from datetime import datetime
 
 # Add parent directory to path to import mmo_ai_bridge_v05
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -31,14 +36,25 @@ except ImportError:
     HAS_MMO_BRIDGE = False
     print("Warning: Could not import mmo_ai_bridge_v05. Using fallback mode.")
 
+# Import database module
+try:
+    from database import get_database
+    HAS_DATABASE = True
+except ImportError:
+    HAS_DATABASE = False
+    print("Warning: Could not import database module. Running without persistence.")
+
 app = Flask(__name__, static_folder='.')
 CORS(app)  # Enable CORS for all routes
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Initialize translator
+# Initialize components
 if HAS_MMO_BRIDGE:
     translator = TextToVisualTranslator()
     concept_db = AIConceptDatabase()
+
+if HAS_DATABASE:
+    db = get_database()
 
 # Store active simulations
 active_simulations = {}
@@ -103,7 +119,7 @@ def translate_ai_text():
         # Convert characters to JSON-serializable format
         characters_json = []
         for char in characters:
-            characters_json.append({
+            char_data = {
                 "name": char.name,
                 "class": char.char_class.class_name,
                 "status": char.status.value,
@@ -115,7 +131,32 @@ def translate_ai_text():
                 "metrics": char.metrics,
                 "x": char.x,
                 "y": char.y
-            })
+            }
+
+            # Save to database if available
+            if HAS_DATABASE:
+                try:
+                    char_id = db.create_character(
+                        name=char.name,
+                        char_class=char.char_class.class_name,
+                        level=char.level,
+                        health=char.health,
+                        metrics=char.metrics
+                    )
+                    db.update_character(
+                        char_id,
+                        mana=char.mana,
+                        experience=char.experience,
+                        position_x=char.x,
+                        position_y=char.y,
+                        status=char.status.value
+                    )
+                    char_data['db_id'] = char_id
+                except Exception as db_error:
+                    print(f"Database error: {db_error}")
+                    # Continue without database save
+
+            characters_json.append(char_data)
 
         return jsonify({
             "characters": characters_json,
@@ -203,11 +244,281 @@ def simulate_pipeline():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
+    db_status = "available" if HAS_DATABASE else "unavailable"
+    db_size = db.get_database_size() if HAS_DATABASE else 0
+
     return jsonify({
         "status": "healthy",
-        "version": "0.85",
-        "mmo_bridge_available": HAS_MMO_BRIDGE
+        "version": "0.95",
+        "mmo_bridge_available": HAS_MMO_BRIDGE,
+        "database_available": HAS_DATABASE,
+        "database_status": db_status,
+        "database_size_bytes": db_size
     })
+
+
+# ============================================================================
+# Database API Endpoints (NEW in v0.95)
+# ============================================================================
+
+@app.route('/api/characters', methods=['GET'])
+def get_characters_list():
+    """Get list of all characters"""
+    if not HAS_DATABASE:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+        characters = db.get_all_characters(limit=limit, offset=offset)
+
+        # Parse JSON metrics for each character
+        for char in characters:
+            if char.get('metrics_json'):
+                try:
+                    char['metrics'] = json.loads(char['metrics_json'])
+                except:
+                    char['metrics'] = {}
+                del char['metrics_json']
+
+        return jsonify({
+            "characters": characters,
+            "count": len(characters),
+            "limit": limit,
+            "offset": offset
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/characters/<int:char_id>', methods=['GET'])
+def get_character_details(char_id):
+    """Get detailed information about a specific character"""
+    if not HAS_DATABASE:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        char_stats = db.get_character_stats(char_id)
+        if not char_stats:
+            return jsonify({"error": "Character not found"}), 404
+
+        # Parse JSON metrics
+        if char_stats.get('metrics_json'):
+            try:
+                char_stats['metrics'] = json.loads(char_stats['metrics_json'])
+            except:
+                char_stats['metrics'] = {}
+            del char_stats['metrics_json']
+
+        return jsonify(char_stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/characters/<int:char_id>/history', methods=['GET'])
+def get_character_history(char_id):
+    """Get training history for a character"""
+    if not HAS_DATABASE:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        limit = int(request.args.get('limit', 10))
+        sessions = db.get_character_sessions(char_id, limit=limit)
+
+        return jsonify({
+            "character_id": char_id,
+            "sessions": sessions,
+            "count": len(sessions)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/sessions', methods=['GET'])
+def get_recent_sessions():
+    """Get recent training sessions"""
+    if not HAS_DATABASE:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        limit = int(request.args.get('limit', 20))
+        sessions = db.get_recent_sessions(limit=limit)
+
+        return jsonify({
+            "sessions": sessions,
+            "count": len(sessions)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/sessions/<int:session_id>', methods=['GET'])
+def get_session_details(session_id):
+    """Get detailed information about a training session"""
+    if not HAS_DATABASE:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        session = db.get_training_session(session_id)
+        if not session:
+            return jsonify({"error": "Session not found"}), 404
+
+        # Get epoch-by-epoch metrics
+        metrics = db.get_session_metrics(session_id)
+
+        return jsonify({
+            "session": session,
+            "metrics": metrics
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/statistics', methods=['GET'])
+def get_statistics():
+    """Get global statistics"""
+    if not HAS_DATABASE:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        stats = db.get_global_statistics()
+
+        # Get historical data if requested
+        days = int(request.args.get('days', 0))
+        if days > 0:
+            history = db.get_statistics_history(days=days)
+            stats['history'] = history
+
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/export/json', methods=['GET'])
+def export_json():
+    """Export all data as JSON"""
+    if not HAS_DATABASE:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        data = db.export_to_dict()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/export/csv', methods=['GET'])
+def export_csv():
+    """Export characters as CSV"""
+    if not HAS_DATABASE:
+        return "Database not available", 503
+
+    try:
+        characters = db.get_all_characters(limit=1000)
+
+        # Create CSV
+        output = StringIO()
+        if characters:
+            fieldnames = ['id', 'name', 'class', 'level', 'health', 'max_health',
+                         'mana', 'experience', 'status', 'created_at', 'total_training_time']
+            writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            for char in characters:
+                writer.writerow(char)
+
+        response = output.getvalue()
+        output.close()
+
+        return response, 200, {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': f'attachment; filename=mmo_ai_bridge_characters_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+        }
+    except Exception as e:
+        return str(e), 500
+
+
+@app.route('/api/export/character/<int:char_id>', methods=['GET'])
+def export_character(char_id):
+    """Export complete character history as JSON"""
+    if not HAS_DATABASE:
+        return jsonify({"error": "Database not available"}), 503
+
+    try:
+        data = db.export_character_history(char_id)
+        if not data:
+            return jsonify({"error": "Character not found"}), 404
+
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/batch/translate', methods=['POST'])
+def batch_translate():
+    """
+    Translate multiple AI texts in batch
+
+    Request JSON:
+    {
+        "texts": ["Training Random Forest...", "Using BERT for NLP..."]
+    }
+    """
+    if not HAS_MMO_BRIDGE:
+        return jsonify({"error": "MMO Bridge not available"}), 503
+
+    data = request.get_json()
+    if not data or 'texts' not in data:
+        return jsonify({"error": "Missing 'texts' field"}), 400
+
+    texts = data['texts']
+    if not isinstance(texts, list):
+        return jsonify({"error": "'texts' must be a list"}), 400
+
+    try:
+        results = []
+        for text in texts:
+            characters, scene_description = translator.translate(text)
+
+            # Convert to JSON
+            characters_json = []
+            for char in characters:
+                char_data = {
+                    "name": char.name,
+                    "class": char.char_class.class_name,
+                    "status": char.status.value,
+                    "health": char.health,
+                    "level": char.level,
+                    "metrics": char.metrics
+                }
+
+                # Save to database
+                if HAS_DATABASE:
+                    try:
+                        char_id = db.create_character(
+                            name=char.name,
+                            char_class=char.char_class.class_name,
+                            level=char.level,
+                            health=char.health,
+                            metrics=char.metrics
+                        )
+                        char_data['db_id'] = char_id
+                    except Exception as db_error:
+                        print(f"Database error: {db_error}")
+
+                characters_json.append(char_data)
+
+            results.append({
+                "text": text,
+                "characters": characters_json,
+                "scene_description": scene_description
+            })
+
+        return jsonify({
+            "results": results,
+            "count": len(results)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ============================================================================
@@ -244,19 +555,44 @@ def handle_training_simulation(data):
     {
         "model_name": "Random Forest",
         "epochs": 10,
-        "speed": 1.0  # Multiplier for update speed
+        "speed": 1.0,  # Multiplier for update speed
+        "character_id": 123  # Optional: link to existing character
     }
     """
     model_name = data.get('model_name', 'Neural Network')
     epochs = data.get('epochs', 10)
     speed = data.get('speed', 1.0)
+    character_id = data.get('character_id', None)
 
     # Create simulation control structure
     sim_id = request.sid
-    active_simulations[sim_id] = {'stop': False}
+    start_time = time.time()
+
+    # Create training session in database
+    session_id = None
+    if HAS_DATABASE:
+        try:
+            session_id = db.create_training_session(
+                character_id=character_id,
+                model_name=model_name,
+                total_epochs=epochs,
+                initial_health=50
+            )
+        except Exception as db_error:
+            print(f"Database error creating session: {db_error}")
+
+    active_simulations[sim_id] = {
+        'stop': False,
+        'session_id': session_id,
+        'start_time': start_time
+    }
 
     def simulate_training():
         """Simulate training process with real-time updates"""
+        completed_epochs = 0
+        final_accuracy = 0.95
+        final_loss = 0.05
+
         for epoch in range(1, epochs + 1):
             if active_simulations.get(sim_id, {}).get('stop', True):
                 break
@@ -267,6 +603,27 @@ def handle_training_simulation(data):
             accuracy = 0.5 + (progress * 0.45)  # Accuracy improves
             loss = 1.0 - (progress * 0.8)  # Loss decreases
 
+            completed_epochs = epoch
+            final_accuracy = round(accuracy, 3)
+            final_loss = round(loss, 3)
+
+            # Save metrics to database
+            if HAS_DATABASE and session_id:
+                try:
+                    db.add_training_metric(
+                        session_id=session_id,
+                        epoch=epoch,
+                        accuracy=final_accuracy,
+                        loss=final_loss,
+                        health=health
+                    )
+                    db.update_training_session(
+                        session_id,
+                        completed_epochs=epoch
+                    )
+                except Exception as db_error:
+                    print(f"Database error saving metric: {db_error}")
+
             # Emit update to client
             socketio.emit('training_update', {
                 "model_name": model_name,
@@ -275,8 +632,8 @@ def handle_training_simulation(data):
                 "progress": progress,
                 "health": health,
                 "metrics": {
-                    "accuracy": round(accuracy, 3),
-                    "loss": round(loss, 3)
+                    "accuracy": final_accuracy,
+                    "loss": final_loss
                 },
                 "status": "training"
             }, room=sim_id)
@@ -284,14 +641,45 @@ def handle_training_simulation(data):
             # Wait between epochs (adjustable by speed)
             time.sleep(0.5 / speed)
 
+        # Calculate duration
+        duration = int(time.time() - start_time)
+
         # Training complete
-        if not active_simulations.get(sim_id, {}).get('stop', True):
+        was_stopped = active_simulations.get(sim_id, {}).get('stop', True)
+        if not was_stopped:
+            # Complete the session in database
+            if HAS_DATABASE and session_id:
+                try:
+                    db.complete_training_session(
+                        session_id=session_id,
+                        final_accuracy=final_accuracy,
+                        final_loss=final_loss,
+                        final_health=95,
+                        duration_seconds=duration
+                    )
+                    # Update daily statistics
+                    db.update_daily_statistics()
+                except Exception as db_error:
+                    print(f"Database error completing session: {db_error}")
+
             socketio.emit('training_complete', {
                 "model_name": model_name,
                 "final_health": 95,
-                "final_accuracy": 0.95,
+                "final_accuracy": final_accuracy,
+                "duration": duration,
                 "message": f"{model_name} training completed successfully!"
             }, room=sim_id)
+        else:
+            # Mark as stopped in database
+            if HAS_DATABASE and session_id:
+                try:
+                    db.update_training_session(
+                        session_id,
+                        status='stopped',
+                        duration_seconds=duration
+                    )
+                except Exception as db_error:
+                    print(f"Database error stopping session: {db_error}")
 
         # Clean up
         if sim_id in active_simulations:
@@ -304,7 +692,8 @@ def handle_training_simulation(data):
 
     emit('simulation_started', {
         "message": f"Starting {model_name} training simulation",
-        "epochs": epochs
+        "epochs": epochs,
+        "session_id": session_id
     })
 
 

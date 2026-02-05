@@ -1,0 +1,500 @@
+/**
+ * MMO AI Bridge - Advanced Animations
+ * Version: 0.95
+ * Author: AI Research Assistant
+ * Date: 2026-02-05
+ *
+ * Advanced CSS animations for character cards and effects
+ */
+
+/* ========================================
+   Character Movement Animations
+   ======================================== */
+
+@keyframes walk {
+    0%, 100% { transform: translateY(0px); }
+    25% { transform: translateY(-3px); }
+    75% { transform: translateY(3px); }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+/* Apply walking animation to active characters */
+.character-card.status-active .character-icon {
+    animation: walk 1s ease-in-out infinite;
+}
+
+/* Mages float */
+.character-card.class-mage .character-icon {
+    animation: float 3s ease-in-out infinite;
+}
+
+/* ========================================
+   Skill and Effect Animations
+   ======================================== */
+
+@keyframes glow-pulse {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(102, 126, 234, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(102, 126, 234, 0.8),
+                    0 0 30px rgba(102, 126, 234, 0.6);
+    }
+}
+
+@keyframes fire-glow {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(255, 100, 0, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(255, 100, 0, 0.8),
+                    0 0 35px rgba(255, 150, 0, 0.6);
+    }
+}
+
+@keyframes heal-glow {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(76, 175, 80, 0.8),
+                    0 0 35px rgba(139, 195, 74, 0.6);
+    }
+}
+
+/* Training glow effect */
+.character-card.training {
+    animation: fire-glow 2s ease-in-out infinite;
+}
+
+/* Healing effect */
+.character-card.healing {
+    animation: heal-glow 1.5s ease-in-out infinite;
+}
+
+/* ========================================
+   Level Up Animation
+   ======================================== */
+
+@keyframes level-up {
+    0% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+    25% {
+        transform: scale(1.2) rotate(5deg);
+    }
+    50% {
+        transform: scale(1.3) rotate(-5deg);
+        opacity: 0.9;
+    }
+    75% {
+        transform: scale(1.2) rotate(5deg);
+    }
+    100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+}
+
+@keyframes sparkle {
+    0%, 100% {
+        opacity: 0;
+        transform: scale(0);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.character-card.level-up {
+    animation: level-up 0.8s ease-out;
+}
+
+.character-card.level-up::before {
+    content: "⭐";
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 2em;
+    animation: sparkle 0.8s ease-out;
+    pointer-events: none;
+}
+
+/* ========================================
+   Particle Effects
+   ======================================== */
+
+@keyframes particle-rise {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(-100px) scale(0.5);
+        opacity: 0;
+    }
+}
+
+@keyframes particle-burst {
+    0% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(var(--x), var(--y)) scale(0);
+        opacity: 0;
+    }
+}
+
+/* Particle container for each card */
+.particle-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.particle {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: radial-gradient(circle, #fff, transparent);
+    border-radius: 50%;
+    animation: particle-rise 2s ease-out infinite;
+}
+
+.particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+.particle:nth-child(2) { left: 30%; animation-delay: 0.3s; }
+.particle:nth-child(3) { left: 50%; animation-delay: 0.6s; }
+.particle:nth-child(4) { left: 70%; animation-delay: 0.9s; }
+.particle:nth-child(5) { left: 90%; animation-delay: 1.2s; }
+
+/* ========================================
+   Health Bar Animations
+   ======================================== */
+
+@keyframes health-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes health-drain {
+    0% { background: linear-gradient(90deg, #e74c3c 0%, #c0392b 100%); }
+    100% { background: linear-gradient(90deg, #e74c3c 0%, #c0392b 100%); }
+}
+
+@keyframes health-restore {
+    0% { background: linear-gradient(90deg, #2ecc71 0%, #27ae60 100%); }
+    100% { background: linear-gradient(90deg, #4caf50 0%, #8bc34a 100%); }
+}
+
+.health-fill.low {
+    background: linear-gradient(90deg, #e74c3c 0%, #c0392b 100%);
+    animation: health-pulse 1s ease-in-out infinite;
+}
+
+.health-fill.restoring {
+    animation: health-restore 0.5s ease-out;
+}
+
+.health-fill.draining {
+    animation: health-drain 0.5s ease-out;
+}
+
+/* ========================================
+   Status Badge Animations
+   ======================================== */
+
+@keyframes badge-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-badge.training {
+    animation: badge-blink 1.5s ease-in-out infinite;
+}
+
+.status-badge.critical {
+    background: #e74c3c;
+    color: white;
+    animation: shake 0.5s ease-in-out infinite;
+}
+
+/* ========================================
+   Class-Specific Animations
+   ======================================== */
+
+/* Warrior - Attack animation */
+@keyframes warrior-attack {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    25% { transform: translateX(-5px) rotate(-10deg); }
+    75% { transform: translateX(5px) rotate(10deg); }
+}
+
+.character-card.class-warrior.attacking .character-icon {
+    animation: warrior-attack 0.5s ease-out;
+}
+
+/* Mage - Cast spell */
+@keyframes mage-cast {
+    0%, 100% {
+        transform: scale(1);
+        filter: brightness(1);
+    }
+    50% {
+        transform: scale(1.2);
+        filter: brightness(1.5) drop-shadow(0 0 10px rgba(102, 126, 234, 0.8));
+    }
+}
+
+.character-card.class-mage.casting .character-icon {
+    animation: mage-cast 1s ease-in-out;
+}
+
+/* Druid - Nature growth */
+@keyframes druid-grow {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+
+.character-card.class-druid.growing .character-icon {
+    animation: druid-grow 2s ease-in-out infinite;
+}
+
+/* Alchemist - Brew effect */
+@keyframes alchemist-brew {
+    0%, 100% {
+        filter: hue-rotate(0deg);
+    }
+    25% { filter: hue-rotate(90deg); }
+    50% { filter: hue-rotate(180deg); }
+    75% { filter: hue-rotate(270deg); }
+}
+
+.character-card.class-alchemist.brewing .character-icon {
+    animation: alchemist-brew 3s linear infinite;
+}
+
+/* Rogue - Stealth */
+@keyframes rogue-stealth {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.character-card.class-rogue.stealth .character-icon {
+    animation: rogue-stealth 2s ease-in-out infinite;
+}
+
+/* ========================================
+   Interaction Animations
+   ======================================== */
+
+@keyframes click-ripple {
+    0% {
+        transform: scale(0);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+.character-card::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(102, 126, 234, 0.3);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
+.character-card:active::after {
+    width: 300px;
+    height: 300px;
+    animation: click-ripple 0.6s ease-out;
+}
+
+/* ========================================
+   Loading and Progress Animations
+   ======================================== */
+
+@keyframes progress-shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+}
+
+.progress-fill.animated {
+    background: linear-gradient(
+        90deg,
+        #667eea 0%,
+        #764ba2 25%,
+        #667eea 50%,
+        #764ba2 75%,
+        #667eea 100%
+    );
+    background-size: 2000px 100%;
+    animation: progress-shimmer 2s linear infinite;
+}
+
+@keyframes metric-update {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); color: #667eea; }
+}
+
+.metric-value.updating {
+    animation: metric-update 0.3s ease-out;
+}
+
+/* ========================================
+   Critical State Animations
+   ======================================== */
+
+@keyframes critical-flash {
+    0%, 100% {
+        border-left-color: #e74c3c;
+        background: white;
+    }
+    50% {
+        border-left-color: #c0392b;
+        background: rgba(231, 76, 60, 0.1);
+    }
+}
+
+.character-card.critical {
+    animation: critical-flash 0.5s ease-in-out infinite;
+}
+
+/* ========================================
+   Victory/Success Animations
+   ======================================== */
+
+@keyframes victory-shine {
+    0% {
+        background-position: -100% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.character-card.victory {
+    background: linear-gradient(
+        90deg,
+        #fff 0%,
+        #fff 40%,
+        #ffd700 50%,
+        #fff 60%,
+        #fff 100%
+    );
+    background-size: 200% 100%;
+    animation: victory-shine 1.5s ease-in-out;
+}
+
+@keyframes confetti {
+    0% {
+        transform: translateY(0) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(200px) rotate(720deg);
+        opacity: 0;
+    }
+}
+
+.confetti-piece {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: gold;
+    animation: confetti 2s ease-out forwards;
+}
+
+/* ========================================
+   Idle Animations (Passive)
+   ======================================== */
+
+@keyframes idle-breath {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+.character-card.status-idle .character-icon {
+    animation: idle-breath 4s ease-in-out infinite;
+}
+
+/* ========================================
+   Tooltip Animations
+   ======================================== */
+
+@keyframes tooltip-appear {
+    0% {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tooltip {
+    animation: tooltip-appear 0.3s ease-out;
+}
+
+/* ========================================
+   Responsive Animations
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ========================================
+   Performance Optimizations
+   ======================================== */
+
+.character-card,
+.health-fill,
+.progress-fill,
+.status-badge {
+    will-change: transform, opacity;
+}
+
+/* Use GPU acceleration */
+.character-icon,
+.particle {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
