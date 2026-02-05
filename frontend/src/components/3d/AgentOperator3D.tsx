@@ -1,5 +1,5 @@
-import React, { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import React, { useRef, useState } from 'react'
+import { useFrame, ThreeEvent } from '@react-three/fiber'
 import { Text, Html } from '@react-three/drei'
 import { Agent } from '@/types/agent'
 import { Mesh } from 'three'
@@ -7,11 +7,13 @@ import { Mesh } from 'three'
 interface AgentOperator3DProps {
   agent: Agent
   position: [number, number, number]
+  onClick?: (agent: Agent) => void
 }
 
-export const AgentOperator3D: React.FC<AgentOperator3DProps> = ({ agent, position }) => {
+export const AgentOperator3D: React.FC<AgentOperator3DProps> = ({ agent, position, onClick }) => {
   const meshRef = useRef<Mesh>(null)
   const bobRef = useRef({ time: 0 })
+  const [hovered, setHovered] = useState(false)
 
   // Idle animation (subtle bob)
   useFrame((state, delta) => {
@@ -42,17 +44,41 @@ export const AgentOperator3D: React.FC<AgentOperator3DProps> = ({ agent, positio
     return status === 'busy' ? 0.4 : status === 'error' ? 0.6 : 0.1
   }
 
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation()
+    onClick?.(agent)
+  }
+
+  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation()
+    setHovered(true)
+    document.body.style.cursor = 'pointer'
+  }
+
+  const handlePointerOut = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation()
+    setHovered(false)
+    document.body.style.cursor = 'auto'
+  }
+
   return (
     <group position={position}>
       {/* Agent body - simplified humanoid (capsule) */}
-      <mesh ref={meshRef} castShadow receiveShadow>
+      <mesh
+        ref={meshRef}
+        castShadow
+        receiveShadow
+        onClick={handleClick}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      >
         <capsuleGeometry args={[0.35, 0.9, 8, 16]} />
         <meshStandardMaterial
           color={getStatusColor(agent.status)}
           metalness={0.3}
           roughness={0.7}
           emissive={getStatusColor(agent.status)}
-          emissiveIntensity={getEmissiveIntensity(agent.status)}
+          emissiveIntensity={hovered ? getEmissiveIntensity(agent.status) + 0.3 : getEmissiveIntensity(agent.status)}
         />
       </mesh>
 
@@ -103,19 +129,20 @@ export const AgentOperator3D: React.FC<AgentOperator3DProps> = ({ agent, positio
       )}
 
       {/* Hover info panel */}
-      <Html position={[0, 2.2, 0]} center style={{ pointerEvents: 'none' }}>
-        <div
-          style={{
-            background: 'rgba(0, 0, 0, 0.8)',
-            padding: '8px',
-            borderRadius: '4px',
-            color: 'white',
-            fontSize: '11px',
-            minWidth: '120px',
-            display: 'none',
-          }}
-          className="agent-info-panel"
-        >
+      {hovered && (
+        <Html position={[0, 2.2, 0]} center style={{ pointerEvents: 'none' }}>
+          <div
+            style={{
+              background: 'rgba(0, 0, 0, 0.9)',
+              padding: '10px 12px',
+              borderRadius: '6px',
+              color: 'white',
+              fontSize: '11px',
+              minWidth: '140px',
+              border: '2px solid #d4af37',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+            }}
+          >
           <div><strong>{agent.role}</strong></div>
           <div>Status: {agent.status}</div>
           <div>Tasks: {agent.total_tasks_completed}</div>
@@ -130,7 +157,8 @@ export const AgentOperator3D: React.FC<AgentOperator3DProps> = ({ agent, positio
             </div>
           )}
         </div>
-      </Html>
+        </Html>
+      )}
     </group>
   )
 }

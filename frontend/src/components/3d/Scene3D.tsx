@@ -4,6 +4,7 @@ import { OrbitControls, PerspectiveCamera, Environment, Grid } from '@react-thre
 import { Switchboard3D } from './Switchboard3D'
 import { AgentOperator3D } from './AgentOperator3D'
 import { ConnectionCable3D } from './ConnectionCable3D'
+import { Effects3D } from './Effects3D'
 import { useAgentsStore } from '@/store/agents'
 import { useConnectionsStore } from '@/store/connections'
 
@@ -11,6 +12,13 @@ export const Scene3D: React.FC = () => {
   const agents = useAgentsStore((state) => state.agents)
   const connections = useConnectionsStore((state) => state.connections)
   const [autoRotate, setAutoRotate] = useState(false)
+  const [selectedAgent, setSelectedAgent] = useState<any>(null)
+
+  const handleAgentClick = (agent: any) => {
+    setSelectedAgent(agent)
+    console.log('🎭 Agent clicked:', agent)
+    // Could open a modal here in future
+  }
 
   return (
     <div style={{ width: '100%', height: '700px', position: 'relative' }}>
@@ -115,6 +123,7 @@ export const Scene3D: React.FC = () => {
                 -3.5,
                 (agent.position_y !== undefined ? agent.position_y / 10 : 6)
               ]}
+              onClick={handleAgentClick}
             />
           ))}
 
@@ -149,6 +158,9 @@ export const Scene3D: React.FC = () => {
           {/* Environment map for reflections */}
           <Environment preset="night" />
         </Suspense>
+
+        {/* Post-processing effects */}
+        <Effects3D />
       </Canvas>
     </div>
   )
