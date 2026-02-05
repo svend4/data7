@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { SystemHealth } from '@/components/dashboard/SystemHealth'
 import { PerformanceMetrics } from '@/components/dashboard/PerformanceMetrics'
 import { AgentAnalytics } from '@/components/dashboard/AgentAnalytics'
+import { ActiveAlerts } from '@/components/dashboard/ActiveAlerts'
 
 type TimeframeOption = '1h' | '24h' | '7d' | '30d'
 
@@ -30,6 +31,11 @@ export const MonitoringDashboard: React.FC = () => {
 
       {/* Main Content */}
       <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '32px' }}>
+        {/* Row 0: Active Alerts */}
+        <div style={{ marginBottom: '24px' }}>
+          <ActiveAlerts refreshInterval={10000} maxAlerts={10} />
+        </div>
+
         {/* Row 1: System Health + Performance Metrics */}
         <div
           style={{
