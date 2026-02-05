@@ -1,6 +1,12 @@
 """
 FastAPI Main Application
 Art Deco Switchboard API - Entry Point
+
+Phase 9 Integration:
+- Prometheus metrics middleware
+- JWT authentication
+- Redis caching
+- WebSocket real-time updates
 """
 
 from contextlib import asynccontextmanager
@@ -23,6 +29,10 @@ from app.api.alerts import router as alerts_router
 from app.api.reports import router as reports_router
 from app.api.websocket import router as websocket_router
 
+# Phase 9: Advanced features
+from app.middleware.prometheus import PrometheusMiddleware, metrics_endpoint
+from app.cache.redis import init_redis, close_redis
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
@@ -37,12 +47,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     await init_database()
     print("✅ Database initialized")
 
+    # Phase 9: Initialize Redis cache
+    try:
+        await init_redis()
+        print("✅ Redis cache initialized")
+    except Exception as e:
+        print(f"⚠️  Redis cache initialization failed: {e}")
+        print("   Continuing without cache...")
+
+    print("✅ Switchboard system ready!")
+
     yield
 
     # Shutdown
     print("🎭 Shutting down gracefully...")
+
+    # Close Redis
+    try:
+        await close_redis()
+        print("✅ Redis connections closed")
+    except Exception:
+        pass
+
+    # Close database
     await close_database()
     print("✅ Database connections closed")
+    print("👋 Goodbye!")
 
 
 app = FastAPI(
@@ -63,6 +93,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Phase 9: Prometheus metrics middleware
+app.add_middleware(PrometheusMiddleware)
 
 # Register routers
 app.include_router(agents_router, prefix="/api")
@@ -85,8 +118,19 @@ async def root():
         "version": settings.VERSION,
         "status": "operational",
         "theme": "Art Deco 1920s Telephonic Exchange",
+        "phase": "Phase 9 - Advanced Features",
+        "features": {
+            "authentication": "JWT with RBAC",
+            "caching": "Redis multi-layer",
+            "monitoring": "Prometheus + Grafana",
+            "real_time": "WebSocket updates",
+            "background_jobs": "Celery workers"
+        },
         "endpoints": {
             "docs": "/api/docs",
+            "health": "/health",
+            "metrics": "/metrics",
+            "auth": "/api/auth/*",
             "agents": "/api/agents",
             "tasks": "/api/tasks",
             "connections": "/api/connections",
@@ -113,6 +157,18 @@ async def health_check():
             "version": settings.VERSION,
         }
     )
+
+
+# Phase 9: Prometheus metrics endpoint
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return metrics_endpoint()
+
+
+# Phase 9: Authentication routes
+from app.api.auth import router as auth_router
+app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
 
 
 if __name__ == "__main__":

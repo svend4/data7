@@ -475,3 +475,45 @@ async def get_cache_info() -> Dict[str, Any]:
             for name, config in CACHE_PATTERNS.items()
         }
     }
+
+
+# ============================================================================
+# Application Lifecycle
+# ============================================================================
+
+async def init_redis():
+    """
+    Initialize Redis connection on application startup.
+    
+    Creates connection pool and tests connectivity.
+    """
+    global cache_manager
+    
+    try:
+        # Test connection
+        await cache_manager.get("__health_check__")
+        print("✅ Redis connection successful")
+        
+        # Optionally warm cache
+        # await warm_cache()
+        
+    except Exception as e:
+        print(f"⚠️  Redis connection failed: {e}")
+        raise
+
+
+async def close_redis():
+    """
+    Close Redis connections on application shutdown.
+    
+    Gracefully closes connection pool.
+    """
+    global cache_manager
+    
+    try:
+        if cache_manager._redis_client._client:
+            await cache_manager._redis_client._client.close()
+            await cache_manager._redis_client._client.connection_pool.disconnect()
+            print("✅ Redis connections closed")
+    except Exception as e:
+        print(f"⚠️  Error closing Redis connections: {e}")
