@@ -5,13 +5,21 @@ import { useConnectionsStore } from './store/connections'
 import { wsClient } from './websocket/client'
 import { WebSocketEventType } from './types/websocket'
 import { TaskCard } from './components/tasks/TaskCard'
+import { TaskForm } from './components/tasks/TaskForm'
+import { AgentForm } from './components/agents/AgentForm'
+import { ConnectionForm } from './components/connections/ConnectionForm'
 import { SocketBoard } from './components/connections/SocketBoard'
 import { Statistics } from './components/dashboard/Statistics'
 import { Card } from './components/common/Card'
+import { Button } from './components/common/Button'
+import { Modal } from './components/common/Modal'
 import './styles/global.css'
 
 function App() {
   const [wsConnected, setWsConnected] = useState(false)
+  const [showTaskForm, setShowTaskForm] = useState(false)
+  const [showAgentForm, setShowAgentForm] = useState(false)
+  const [showConnectionForm, setShowConnectionForm] = useState(false)
   
   // Task store
   const { 
@@ -143,7 +151,7 @@ function App() {
           <p style={{ margin: '8px 0 0 0', fontSize: '14px', opacity: 0.9 }}>
             Art Deco 1920s Telephonic Exchange for Multi-Agent AI Coordination
           </p>
-          <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div
               style={{
                 display: 'inline-flex',
@@ -167,6 +175,16 @@ function App() {
               />
               {wsConnected ? 'LIVE' : 'DISCONNECTED'}
             </div>
+            
+            <Button onClick={() => setShowTaskForm(true)} variant="success" size="small">
+              + Create Task
+            </Button>
+            <Button onClick={() => setShowAgentForm(true)} variant="success" size="small">
+              + Create Agent
+            </Button>
+            <Button onClick={() => setShowConnectionForm(true)} variant="success" size="small">
+              + Create Connection
+            </Button>
           </div>
         </div>
       </header>
@@ -185,30 +203,35 @@ function App() {
 
         {/* Tasks Section */}
         <div style={{ marginBottom: '30px' }}>
-          <h2 style={{ marginBottom: '20px', fontSize: '24px', fontWeight: 600 }}>
-            📋 Tasks ({tasks.length})
-          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
+              📋 Tasks ({tasks.length})
+            </h2>
+            <Button onClick={() => setShowTaskForm(true)} variant="primary" size="small">
+              + New Task
+            </Button>
+          </div>
           
           {tasks.length === 0 ? (
             <Card>
               <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
                 <p style={{ fontSize: '18px', marginBottom: '16px' }}>
-                  No tasks yet. Create one using the REST API!
+                  No tasks yet. Click "+ Create Task" button above to create your first task!
                 </p>
-                <div style={{ textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
+                <p style={{ fontSize: '14px' }}>
+                  Or use the REST API:
+                </p>
+                <div style={{ textAlign: 'left', maxWidth: '600px', margin: '16px auto 0' }}>
                   <pre style={{ backgroundColor: '#f8f9fa', padding: '16px', borderRadius: '8px', overflow: 'auto' }}>
 {`curl -X POST http://localhost:8000/api/tasks \\
   -H "Content-Type: application/json" \\
   -d '{
-    "description": "Test task from dashboard",
+    "description": "Test task",
     "task_type": "test",
     "priority": 1
   }'`}
                   </pre>
                 </div>
-                <p style={{ marginTop: '16px', fontSize: '14px' }}>
-                  ⚡ Tasks will appear here in real-time via WebSocket!
-                </p>
               </div>
             </Card>
           ) : (
@@ -227,11 +250,25 @@ function App() {
         </div>
 
         {/* Agents Section */}
-        {agents.length > 0 && (
-          <div style={{ marginBottom: '30px' }}>
-            <h2 style={{ marginBottom: '20px', fontSize: '24px', fontWeight: 600 }}>
+        <div style={{ marginBottom: '30px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
               🤖 Agents ({agents.length})
             </h2>
+            <Button onClick={() => setShowAgentForm(true)} variant="primary" size="small">
+              + New Agent
+            </Button>
+          </div>
+
+          {agents.length === 0 ? (
+            <Card>
+              <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
+                <p style={{ fontSize: '18px' }}>
+                  No agents yet. Click "+ Create Agent" to add your first agent!
+                </p>
+              </div>
+            </Card>
+          ) : (
             <div
               style={{
                 display: 'grid',
@@ -244,6 +281,9 @@ function App() {
                   <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 600 }}>
                     {agent.role}
                   </h3>
+                  <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
+                    <strong>ID:</strong> {agent.id.slice(0, 16)}...
+                  </p>
                   <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
                     <strong>Status:</strong>{' '}
                     <span
@@ -291,15 +331,29 @@ function App() {
                 </Card>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Connections Section */}
-        {connections.length > 0 && (
-          <div style={{ marginBottom: '30px' }}>
-            <h2 style={{ marginBottom: '20px', fontSize: '24px', fontWeight: 600 }}>
+        <div style={{ marginBottom: '30px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
               🔌 Connections ({connections.length})
             </h2>
+            <Button onClick={() => setShowConnectionForm(true)} variant="primary" size="small">
+              + New Connection
+            </Button>
+          </div>
+
+          {connections.length === 0 ? (
+            <Card>
+              <div style={{ textAlign: 'center', padding: '40px', color: '#6c757d' }}>
+                <p style={{ fontSize: '18px' }}>
+                  No connections yet. Click "+ Create Connection" to establish your first connection!
+                </p>
+              </div>
+            </Card>
+          ) : (
             <div
               style={{
                 display: 'grid',
@@ -333,10 +387,10 @@ function App() {
                     </span>
                   </div>
                   <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>From:</strong> {connection.from_agent_id}
+                    <strong>From:</strong> {connection.from_agent_id.slice(0, 16)}...
                   </p>
                   <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
-                    <strong>To:</strong> {connection.to_agent_id}
+                    <strong>To:</strong> {connection.to_agent_id.slice(0, 16)}...
                   </p>
                   {connection.socket_from && connection.socket_to && (
                     <p style={{ margin: '4px 0', fontSize: '14px', color: '#666' }}>
@@ -349,8 +403,8 @@ function App() {
                 </Card>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </main>
 
       {/* Footer */}
@@ -367,6 +421,37 @@ function App() {
           Meta-Orchestrator Switchboard &copy; 2025 | Phase 5: Frontend Integration
         </p>
       </footer>
+
+      {/* Modals */}
+      <Modal isOpen={showTaskForm} onClose={() => setShowTaskForm(false)} title="Create New Task">
+        <TaskForm
+          onSuccess={() => {
+            setShowTaskForm(false)
+            alert('Task created successfully! It will appear in the list.')
+          }}
+          onCancel={() => setShowTaskForm(false)}
+        />
+      </Modal>
+
+      <Modal isOpen={showAgentForm} onClose={() => setShowAgentForm(false)} title="Create New Agent">
+        <AgentForm
+          onSuccess={() => {
+            setShowAgentForm(false)
+            alert('Agent created successfully!')
+          }}
+          onCancel={() => setShowAgentForm(false)}
+        />
+      </Modal>
+
+      <Modal isOpen={showConnectionForm} onClose={() => setShowConnectionForm(false)} title="Create New Connection">
+        <ConnectionForm
+          onSuccess={() => {
+            setShowConnectionForm(false)
+            alert('Connection created successfully!')
+          }}
+          onCancel={() => setShowConnectionForm(false)}
+        />
+      </Modal>
     </div>
   )
 }
