@@ -40,6 +40,15 @@ from .retail_simulator import (
     Shift
 )
 
+from .manufacturing_simulator import (
+    ManufacturingSimulator,
+    ManufacturingWorker,
+    ProductionTask,
+    Factory,
+    Machine,
+    ProductionShift
+)
+
 __all__ = [
     # Base classes
     "ProfessionalSimulator",
@@ -66,4 +75,12 @@ __all__ = [
     "Product",
     "Store",
     "Shift",
+
+    # Manufacturing
+    "ManufacturingSimulator",
+    "ManufacturingWorker",
+    "ProductionTask",
+    "Factory",
+    "Machine",
+    "ProductionShift",
 ]

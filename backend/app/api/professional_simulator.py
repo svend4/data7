@@ -25,6 +25,15 @@ from app.simulators.logistics_simulator import (
     Route
 )
 
+from app.simulators.manufacturing_simulator import (
+    ManufacturingSimulator,
+    ManufacturingWorker,
+    ProductionTask,
+    Factory,
+    Machine,
+    ProductionShift
+)
+
 
 # ============================================================================
 # Router
@@ -301,8 +310,8 @@ async def list_domains():
             id="manufacturing",
             name="Manufacturing and Production",
             description="Assembly lines, quality control, and production optimization",
-            status="planned",
-            completion_percentage=0
+            status="operational",
+            completion_percentage=40
         ),
         DomainInfo(
             id="healthcare",
@@ -344,8 +353,14 @@ async def simulator_info():
                 "completion": "0%"
             },
             "manufacturing": {
-                "status": "planned",
-                "completion": "0%"
+                "status": "operational",
+                "completion": "40%",
+                "features": [
+                    "Assembly line simulation",
+                    "Quality control system",
+                    "Machine maintenance tracking",
+                    "Shift-based production"
+                ]
             },
             "healthcare": {
                 "status": "planned",
@@ -549,7 +564,157 @@ async def get_retail_performance_report(scenario_id: str):
     return report
 
 
-# Update domains endpoint to include retail
+# ============================================================================
+# Manufacturing Simulator Endpoints
+# ============================================================================
+
+class CreateManufacturingScenarioRequest(BaseModel):
+    """Request to create manufacturing scenario"""
+    name: str = Field(..., description="Scenario name")
+    description: str = Field(..., description="Scenario description")
+    num_workers: int = Field(10, ge=1, le=50, description="Number of workers")
+    num_machines: int = Field(5, ge=1, le=20, description="Number of machines")
+    production_target: int = Field(500, ge=10, le=10000, description="Target units to produce")
+    factory_type: str = Field("electronics", description="Type of factory")
+
+
+class SimulateProductionShiftRequest(BaseModel):
+    """Request to simulate production shift"""
+    scenario_id: str = Field(..., description="Scenario ID")
+    shift_number: int = Field(1, ge=1, le=3, description="Shift number (1, 2, or 3)")
+    shift_duration: int = Field(8, ge=1, le=12, description="Shift duration in hours")
+
+
+class ManufacturingScenarioResponse(BaseModel):
+    """Response for manufacturing scenario creation"""
+    scenario_id: str
+    name: str
+    description: str
+    num_workers: int
+    num_machines: int
+    production_target: int
+    factory_type: str
+    message: str = "Manufacturing scenario created successfully"
+
+
+class ProductionShiftResponse(BaseModel):
+    """Response for production shift simulation"""
+    shift_number: int
+    duration: int
+    workers: int
+    tasks: Dict[str, int]
+    production: Dict[str, Any]
+    efficiency: float
+    machines_operational: int
+    machines_needing_maintenance: int
+
+
+class ManufacturingReportResponse(BaseModel):
+    """Response for manufacturing performance report"""
+    scenario_id: str
+    scenario_name: str
+    completion_score: float
+    production: Dict[str, Any]
+    workers: List[Dict[str, Any]]
+    machines: Dict[str, int]
+    shifts_completed: int
+
+
+# In-memory storage for manufacturing simulators
+manufacturing_simulators: Dict[str, ManufacturingSimulator] = {}
+
+
+@router.post("/manufacturing/scenario", response_model=ManufacturingScenarioResponse)
+async def create_manufacturing_scenario(request: CreateManufacturingScenarioRequest):
+    """
+    Create a new manufacturing scenario
+
+    Creates a factory with workers, machines, and production tasks.
+    Workers are assigned to different shifts and roles (assembler, operator, inspector, maintenance).
+    """
+    try:
+        simulator = ManufacturingSimulator()
+        scenario = simulator.create_manufacturing_scenario(
+            name=request.name,
+            description=request.description,
+            num_workers=request.num_workers,
+            num_machines=request.num_machines,
+            production_target=request.production_target,
+            factory_type=request.factory_type
+        )
+
+        # Store simulator for later use
+        manufacturing_simulators[scenario.id] = simulator
+
+        return ManufacturingScenarioResponse(
+            scenario_id=scenario.id,
+            name=scenario.name,
+            description=scenario.description,
+            num_workers=len(scenario.professionals),
+            num_machines=request.num_machines,
+            production_target=request.production_target,
+            factory_type=request.factory_type
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating manufacturing scenario: {str(e)}")
+
+
+@router.post("/manufacturing/simulate", response_model=ProductionShiftResponse)
+async def simulate_production_shift(request: SimulateProductionShiftRequest):
+    """
+    Simulate a production shift
+
+    Simulates workers performing production tasks over a shift period.
+    Workers produce units, perform quality checks, and maintain machines.
+    """
+    if request.scenario_id not in manufacturing_simulators:
+        raise HTTPException(status_code=404, detail="Manufacturing scenario not found")
+
+    try:
+        simulator = manufacturing_simulators[request.scenario_id]
+        scenario = simulator.scenarios[request.scenario_id]
+
+        # Simulate shift
+        report = simulator.simulate_production_shift(
+            scenario=scenario,
+            shift_number=request.shift_number,
+            shift_duration=request.shift_duration
+        )
+
+        return ProductionShiftResponse(**report)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error simulating production shift: {str(e)}")
+
+
+@router.get("/manufacturing/report/{scenario_id}", response_model=ManufacturingReportResponse)
+async def get_manufacturing_report(scenario_id: str):
+    """
+    Get manufacturing performance report
+
+    Returns comprehensive report including:
+    - Production metrics (units produced, quality rate)
+    - Worker performance (by role and shift)
+    - Machine status (operational, needing maintenance)
+    - Overall efficiency and completion score
+    """
+    if scenario_id not in manufacturing_simulators:
+        raise HTTPException(status_code=404, detail="Manufacturing scenario not found")
+
+    try:
+        simulator = manufacturing_simulators[scenario_id]
+        scenario = simulator.scenarios[scenario_id]
+
+        report = simulator.get_performance_report(scenario)
+
+        return ManufacturingReportResponse(**report)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+
+# Update domains endpoint to include retail and manufacturing
 @router.get("/domains", response_model=List[DomainInfo])
 async def list_domains():
     """
@@ -576,8 +741,8 @@ async def list_domains():
             id="manufacturing",
             name="Manufacturing and Production",
             description="Assembly lines, quality control, and production optimization",
-            status="planned",
-            completion_percentage=0
+            status="operational",
+            completion_percentage=40
         ),
         DomainInfo(
             id="healthcare",
@@ -626,8 +791,14 @@ async def simulator_info():
                 ]
             },
             "manufacturing": {
-                "status": "planned",
-                "completion": "0%"
+                "status": "operational",
+                "completion": "40%",
+                "features": [
+                    "Assembly line simulation",
+                    "Quality control system",
+                    "Machine maintenance tracking",
+                    "Shift-based production"
+                ]
             },
             "healthcare": {
                 "status": "planned",
