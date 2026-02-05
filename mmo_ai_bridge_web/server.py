@@ -5,7 +5,7 @@ Includes persistent storage for character history and training sessions
 
 Author: AI Research Assistant
 Date: 2026-02-05
-Version: 0.95
+Version: 1.0 - PRODUCTION RELEASE
 """
 
 from flask import Flask, request, jsonify, send_from_directory
@@ -249,7 +249,7 @@ def health_check():
 
     return jsonify({
         "status": "healthy",
-        "version": "0.95",
+        "version": "1.0",
         "mmo_bridge_available": HAS_MMO_BRIDGE,
         "database_available": HAS_DATABASE,
         "database_status": db_status,
@@ -531,8 +531,8 @@ def handle_connect():
     print(f"Client connected: {request.sid}")
     emit('connection_response', {
         "status": "connected",
-        "message": "Welcome to MMO AI Bridge!",
-        "version": "0.85"
+        "message": "Welcome to MMO AI Bridge v1.0!",
+        "version": "1.0"
     })
 
 
@@ -727,21 +727,47 @@ def handle_character_update(data):
 
 if __name__ == '__main__':
     print("\n" + "=" * 70)
-    print("🎮 MMO AI BRIDGE - Web Server v0.85 Starting")
+    print("🎮 MMO AI BRIDGE v1.0 - PRODUCTION RELEASE")
     print("=" * 70)
-    print(f"\nServer: http://localhost:5000")
-    print(f"MMO Bridge Module: {'✅ Available' if HAS_MMO_BRIDGE else '⚠️  Not Available (Fallback Mode)'}")
-    print("\n📡 WebSocket Support: ✅ Enabled")
-    print("\nAPI Endpoints:")
-    print("  POST /api/translate     - Translate AI text to MMO characters")
-    print("  GET  /api/concepts      - Get supported AI concepts")
-    print("  POST /api/simulate/pipeline - Simulate ML pipeline")
-    print("  GET  /api/health        - Health check")
-    print("\nWebSocket Events:")
-    print("  connect                     - Client connection")
-    print("  start_training_simulation   - Start real-time training")
-    print("  stop_simulation            - Stop active simulation")
-    print("  update_character           - Broadcast character updates")
+    print(f"\n🌐 Server: http://localhost:5000")
+    print(f"🎯 Statistics Dashboard: http://localhost:5000/stats.html")
+    print(f"\n🔧 MMO Bridge Module: {'✅ Available' if HAS_MMO_BRIDGE else '⚠️  Not Available (Fallback Mode)'}")
+    print(f"💾 Database: {'✅ Available' if HAS_DATABASE else '⚠️  Not Available'}")
+    print("📡 WebSocket Support: ✅ Enabled")
+    print("\n📍 REST API Endpoints (16 total):")
+    print("  Translation:")
+    print("    POST /api/translate           - Translate AI text to MMO characters")
+    print("    POST /api/batch/translate     - Batch translate multiple texts")
+    print("  Characters:")
+    print("    GET  /api/characters          - List all characters")
+    print("    GET  /api/characters/<id>     - Get character details")
+    print("    GET  /api/characters/<id>/history - Get training history")
+    print("  Training Sessions:")
+    print("    GET  /api/sessions            - Recent training sessions")
+    print("    GET  /api/sessions/<id>       - Session details with metrics")
+    print("  Statistics:")
+    print("    GET  /api/statistics          - Global statistics")
+    print("  Export:")
+    print("    GET  /api/export/json         - Export all data as JSON")
+    print("    GET  /api/export/csv          - Export characters as CSV")
+    print("    GET  /api/export/character/<id> - Export character history")
+    print("  Other:")
+    print("    GET  /api/concepts            - Get supported AI concepts")
+    print("    POST /api/simulate/pipeline   - Simulate ML pipeline")
+    print("    GET  /api/health              - Health check")
+    print("\n⚡ WebSocket Events:")
+    print("  connect                       - Client connection")
+    print("  start_training_simulation     - Start real-time training")
+    print("  stop_simulation               - Stop active simulation")
+    print("  update_character              - Broadcast character updates")
+    print("\n📊 Features:")
+    print("  ✅ Persistent Storage (SQLite)")
+    print("  ✅ Real-time Training Simulation")
+    print("  ✅ Advanced Animations (20+)")
+    print("  ✅ Statistics Dashboard")
+    print("  ✅ Data Export (CSV/JSON)")
+    print("  ✅ Batch Processing")
+    print("\n🎉 Status: PRODUCTION READY")
     print("\nPress Ctrl+C to stop")
     print("=" * 70 + "\n")
 
