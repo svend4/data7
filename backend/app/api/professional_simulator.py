@@ -44,6 +44,15 @@ from app.simulators.healthcare_simulator import (
     MedicalShift
 )
 
+from app.simulators.social_domestic_simulator import (
+    SocialDomesticSimulator,
+    ServiceWorker,
+    ServiceTask,
+    Client,
+    ServiceLocation,
+    ServiceShift
+)
+
 
 # ============================================================================
 # Router
@@ -330,6 +339,13 @@ async def list_domains():
             status="operational",
             completion_percentage=40
         ),
+        DomainInfo(
+            id="social_services",
+            name="Social & Domestic Services",
+            description="Legal, social work, domestic, and home care services",
+            status="operational",
+            completion_percentage=40
+        ),
     ]
 
     return domains
@@ -380,6 +396,17 @@ async def simulator_info():
                     "Multi-role healthcare workers",
                     "Vital signs monitoring",
                     "Treatment outcome tracking"
+                ]
+            },
+            "social_services": {
+                "status": "operational",
+                "completion": "40%",
+                "features": [
+                    "Legal services (lawyer, social law specialist)",
+                    "Social work and case management",
+                    "Domestic services (housekeeper, estate manager)",
+                    "Home care (caregiver, home health aide)",
+                    "Client satisfaction tracking"
                 ]
             }
         },
@@ -881,7 +908,153 @@ async def get_healthcare_report(scenario_id: str):
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 
-# Update domains endpoint to include all four domains
+# ============================================================================
+# Social & Domestic Services Simulator Endpoints
+# ============================================================================
+
+class CreateSocialServiceScenarioRequest(BaseModel):
+    """Request to create social/domestic service scenario"""
+    name: str = Field(..., description="Scenario name")
+    description: str = Field(..., description="Scenario description")
+    service_type: str = Field("mixed", description="Service type: legal, social_work, domestic, home_care, mixed")
+    num_workers: int = Field(5, ge=1, le=20, description="Number of service workers")
+    num_clients: int = Field(15, ge=1, le=50, description="Number of clients")
+
+
+class SimulateServiceShiftRequest(BaseModel):
+    """Request to simulate service shift"""
+    scenario_id: str = Field(..., description="Scenario ID")
+    shift_type: str = Field("office_hours", description="Shift type: office_hours, home_visit, on_call")
+    shift_duration: int = Field(8, ge=1, le=12, description="Shift duration in hours")
+
+
+class SocialServiceScenarioResponse(BaseModel):
+    """Response for social/domestic service scenario creation"""
+    scenario_id: str
+    name: str
+    description: str
+    service_type: str
+    num_workers: int
+    num_clients: int
+    message: str = "Social/Domestic service scenario created successfully"
+
+
+class ServiceShiftResponse(BaseModel):
+    """Response for service shift simulation"""
+    shift_type: str
+    duration: int
+    workers: int
+    clients: Dict[str, int]
+    outcomes: Dict[str, Any]
+    average_satisfaction: float
+    tasks_completed: int
+
+
+class SocialServiceReportResponse(BaseModel):
+    """Response for social/domestic service performance report"""
+    scenario_id: str
+    scenario_name: str
+    completion_score: float
+    success_rate: float
+    clients: Dict[str, Any]
+    workers: List[Dict[str, Any]]
+    shifts_completed: int
+
+
+# In-memory storage for social/domestic service simulators
+social_service_simulators: Dict[str, SocialDomesticSimulator] = {}
+
+
+@router.post("/social_services/scenario", response_model=SocialServiceScenarioResponse)
+async def create_social_service_scenario(request: CreateSocialServiceScenarioRequest):
+    """
+    Create a new social/domestic service scenario
+
+    Creates a service center with workers (lawyers, social workers, housekeepers, caregivers)
+    and clients needing various services.
+    """
+    try:
+        simulator = SocialDomesticSimulator()
+        scenario = simulator.create_service_scenario(
+            name=request.name,
+            description=request.description,
+            service_type=request.service_type,
+            num_workers=request.num_workers,
+            num_clients=request.num_clients
+        )
+
+        # Store simulator for later use
+        social_service_simulators[scenario.id] = simulator
+
+        return SocialServiceScenarioResponse(
+            scenario_id=scenario.id,
+            name=scenario.name,
+            description=scenario.description,
+            service_type=request.service_type,
+            num_workers=len(scenario.professionals),
+            num_clients=request.num_clients
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating social service scenario: {str(e)}")
+
+
+@router.post("/social_services/simulate", response_model=ServiceShiftResponse)
+async def simulate_service_shift(request: SimulateServiceShiftRequest):
+    """
+    Simulate a service shift
+
+    Simulates service workers providing services to clients over a shift period.
+    Lawyers provide legal advice, social workers coordinate services,
+    housekeepers maintain properties, caregivers provide home care.
+    """
+    if request.scenario_id not in social_service_simulators:
+        raise HTTPException(status_code=404, detail="Social service scenario not found")
+
+    try:
+        simulator = social_service_simulators[request.scenario_id]
+        scenario = simulator.scenarios[request.scenario_id]
+
+        # Simulate shift
+        report = simulator.simulate_service_shift(
+            scenario=scenario,
+            shift_type=request.shift_type,
+            shift_duration=request.shift_duration
+        )
+
+        return ServiceShiftResponse(**report)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error simulating service shift: {str(e)}")
+
+
+@router.get("/social_services/report/{scenario_id}", response_model=SocialServiceReportResponse)
+async def get_social_service_report(scenario_id: str):
+    """
+    Get social/domestic service performance report
+
+    Returns comprehensive report including:
+    - Client satisfaction and progress
+    - Service outcomes by worker role
+    - Worker performance metrics
+    - Overall service quality
+    """
+    if scenario_id not in social_service_simulators:
+        raise HTTPException(status_code=404, detail="Social service scenario not found")
+
+    try:
+        simulator = social_service_simulators[scenario_id]
+        scenario = simulator.scenarios[scenario_id]
+
+        report = simulator.get_performance_report(scenario)
+
+        return SocialServiceReportResponse(**report)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+
+# Update domains endpoint to include all five domains
 @router.get("/domains", response_model=List[DomainInfo])
 async def list_domains():
     """
@@ -915,6 +1088,13 @@ async def list_domains():
             id="healthcare",
             name="Healthcare and Medical",
             description="Diagnosis, treatment, and patient care simulation",
+            status="operational",
+            completion_percentage=40
+        ),
+        DomainInfo(
+            id="social_services",
+            name="Social & Domestic Services",
+            description="Legal, social work, domestic, and home care services",
             status="operational",
             completion_percentage=40
         ),
@@ -975,6 +1155,17 @@ async def simulator_info():
                     "Multi-role healthcare workers",
                     "Vital signs monitoring",
                     "Treatment outcome tracking"
+                ]
+            },
+            "social_services": {
+                "status": "operational",
+                "completion": "40%",
+                "features": [
+                    "Legal services (lawyer, social law specialist)",
+                    "Social work and case management",
+                    "Domestic services (housekeeper, estate manager)",
+                    "Home care (caregiver, home health aide)",
+                    "Client satisfaction tracking"
                 ]
             }
         },
