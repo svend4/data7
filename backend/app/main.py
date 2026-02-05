@@ -29,6 +29,11 @@ from app.api.alerts import router as alerts_router
 from app.api.reports import router as reports_router
 from app.api.websocket import router as websocket_router
 
+# New routers: TSP, Multi-Agent, Knowledge Transformation
+from app.api.tsp import router as tsp_router
+from app.api.multi_agent import router as multi_agent_router
+from app.api.knowledge import router as knowledge_router
+
 # Phase 9: Advanced features
 from app.middleware.prometheus import PrometheusMiddleware, metrics_endpoint
 from app.cache.redis import init_redis, close_redis
@@ -109,6 +114,11 @@ app.include_router(alerts_router)  # Alerts API (includes /api in router)
 app.include_router(reports_router)  # Reports API (includes /api in router)
 app.include_router(websocket_router)  # WebSocket has no /api prefix
 
+# New routers: TSP, Multi-Agent, Knowledge Transformation
+app.include_router(tsp_router)  # TSP API (includes /api/tsp in router)
+app.include_router(multi_agent_router)  # Multi-Agent API (includes /api/multi-agent in router)
+app.include_router(knowledge_router)  # Knowledge API (includes /api/knowledge in router)
+
 
 @app.get("/")
 async def root():
@@ -142,6 +152,9 @@ async def root():
             "reports": "/api/reports",
             "websocket": "/ws/events",
             "websocket_stats": "/ws/stats",
+            "tsp": "/api/tsp/*",
+            "multi_agent": "/api/multi-agent/*",
+            "knowledge": "/api/knowledge/*",
         }
     }
 
