@@ -17,6 +17,7 @@ from app.api.agents import router as agents_router
 from app.api.tasks import router as tasks_router
 from app.api.connections import router as connections_router
 from app.api.graphs import router as graphs_router, executions_router
+from app.api.optimization import router as optimization_router
 from app.api.websocket import router as websocket_router
 
 
@@ -66,6 +67,7 @@ app.include_router(tasks_router, prefix="/api")
 app.include_router(connections_router, prefix="/api")
 app.include_router(graphs_router, prefix="/api")
 app.include_router(executions_router, prefix="/api")
+app.include_router(optimization_router)  # Optimization API (includes /api in router)
 app.include_router(websocket_router)  # WebSocket has no /api prefix
 
 
@@ -84,6 +86,7 @@ async def root():
             "connections": "/api/connections",
             "graphs": "/api/graphs",
             "executions": "/api/executions",
+            "optimization": "/api/optimization",
             "websocket": "/ws/events",
             "websocket_stats": "/ws/stats",
         }

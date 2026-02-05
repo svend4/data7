@@ -50,3 +50,16 @@ pre-commit==3.6.0
 python-dotenv==1.0.0
 python-dateutil==2.8.2
 pytz==2023.3
+
+# Phase 7: Graph Optimization & Analytics
+networkx==3.2.1
+pandas==2.2.0
+numpy==1.26.3
+scikit-learn==1.4.0
+
+# Phase 7: Reporting
+reportlab==4.0.9
+openpyxl==3.1.2
+
+# Phase 7: Task Scheduling
+celery==5.3.6
