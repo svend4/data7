@@ -477,6 +477,7 @@ class EconomySimulation:
         ax1.set_ylabel('Total Gold')
         ax1.set_title('Total Gold in Economy')
         ax1.grid(True, alpha=0.3)
+        ax1.fill_between(self.history['day'], self.history['total_gold'], alpha=0.3)
 
         # 2. Inflation Rate
         ax2 = axes[0, 1]
@@ -497,19 +498,120 @@ class EconomySimulation:
         ax3.set_ylabel('Average Gold')
         ax3.set_title('Average Gold per Player')
         ax3.grid(True, alpha=0.3)
+        ax3.fill_between(self.history['day'], self.history['avg_gold_per_player'], alpha=0.3, color='green')
 
         # 4. Gini Coefficient (Inequality)
         ax4 = axes[1, 1]
         ax4.plot(self.history['day'], self.history['gini_coefficient'], 'm-', linewidth=2)
+        ax4.axhline(y=0.3, color='g', linestyle='--', alpha=0.5, label='Low inequality')
+        ax4.axhline(y=0.5, color='orange', linestyle='--', alpha=0.5, label='Moderate')
         ax4.set_xlabel('Day')
         ax4.set_ylabel('Gini Coefficient')
         ax4.set_title('Wealth Inequality (Gini Coefficient)')
         ax4.set_ylim([0, 1])
+        ax4.legend()
         ax4.grid(True, alpha=0.3)
 
         plt.tight_layout()
         plt.savefig(filename, dpi=150, bbox_inches='tight')
         print(f"✅ Plot saved to: {filename}")
+
+    def plot_detailed_analysis(self, filename: str = 'economy_detailed.png'):
+        """Детальный анализ с дополнительными графиками"""
+        if not HAS_MATPLOTLIB:
+            print("⚠️  matplotlib not available - skipping plots")
+            return
+
+        fig = plt.figure(figsize=(16, 12))
+        gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+        fig.suptitle('MMO Economy - Detailed Analysis', fontsize=18, fontweight='bold')
+
+        # 1. Gold Flow (Generation vs Sink)
+        ax1 = fig.add_subplot(gs[0, :2])
+        generation_history = []
+        sink_history = []
+        for i, day in enumerate(self.history['day']):
+            if i > 0:
+                gold_change = self.history['total_gold'][i] - self.history['total_gold'][i-1]
+                generation_history.append(self.history['inflation_rate'][i] * 1000)
+                sink_history.append(1000)
+
+        if generation_history:
+            ax1.plot(self.history['day'][1:], generation_history, 'g-', linewidth=2, label='Generation', alpha=0.7)
+            ax1.plot(self.history['day'][1:], sink_history, 'r-', linewidth=2, label='Sink', alpha=0.7)
+            ax1.fill_between(self.history['day'][1:], generation_history, alpha=0.3, color='green')
+            ax1.fill_between(self.history['day'][1:], sink_history, alpha=0.3, color='red')
+        ax1.set_xlabel('Day')
+        ax1.set_ylabel('Gold Flow Rate')
+        ax1.set_title('Gold Generation vs Sink')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # 2. Price Adjustments
+        ax2 = fig.add_subplot(gs[0, 2])
+        price_items = list(self.prices.keys())
+        price_values = list(self.prices.values())
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1']
+        ax2.barh(price_items, price_values, color=colors)
+        ax2.axvline(x=1.0, color='green', linestyle='--', linewidth=2, label='Base (1.0x)')
+        ax2.set_xlabel('Price Multiplier')
+        ax2.set_title('Final Price Adjustments')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3, axis='x')
+
+        # 3. Market Item Prices
+        ax3 = fig.add_subplot(gs[1, :2])
+        item_names = []
+        base_prices = []
+        current_prices = []
+        for item_id, item in self.market.items.items():
+            item_names.append(item.name)
+            base_prices.append(item.base_price)
+            current_prices.append(item.current_price)
+
+        x = range(len(item_names))
+        width = 0.35
+        ax3.bar([i - width/2 for i in x], base_prices, width, label='Base Price', alpha=0.7, color='skyblue')
+        ax3.bar([i + width/2 for i in x], current_prices, width, label='Current Price', alpha=0.7, color='coral')
+        ax3.set_xlabel('Items')
+        ax3.set_ylabel('Price (gold)')
+        ax3.set_title('Market Item Prices: Base vs Current')
+        ax3.set_xticks(x)
+        ax3.set_xticklabels(item_names, rotation=15, ha='right')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3, axis='y')
+
+        # 4. Wealth Distribution (Histogram)
+        ax4 = fig.add_subplot(gs[1, 2])
+        gold_amounts = [p.gold for p in self.players]
+        ax4.hist(gold_amounts, bins=20, color='gold', alpha=0.7, edgecolor='black')
+        ax4.axvline(statistics.mean(gold_amounts), color='red', linestyle='--', linewidth=2, label='Mean')
+        ax4.axvline(statistics.median(gold_amounts), color='blue', linestyle='--', linewidth=2, label='Median')
+        ax4.set_xlabel('Gold Amount')
+        ax4.set_ylabel('Number of Players')
+        ax4.set_title('Wealth Distribution')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3, axis='y')
+
+        # 5. Inflation Timeline with Zones
+        ax5 = fig.add_subplot(gs[2, :])
+        ax5.plot(self.history['day'], self.history['inflation_rate'], 'b-', linewidth=3, label='Inflation')
+
+        # Color zones
+        ax5.axhspan(0.85, 1.15, alpha=0.2, color='green', label='Healthy zone')
+        ax5.axhspan(1.15, max(self.history['inflation_rate']), alpha=0.1, color='red', label='Inflation zone')
+        ax5.axhspan(0, 0.85, alpha=0.1, color='orange', label='Deflation zone')
+
+        ax5.axhline(y=1.0, color='black', linestyle='-', linewidth=1, alpha=0.5)
+        ax5.set_xlabel('Day', fontsize=12)
+        ax5.set_ylabel('Inflation Rate', fontsize=12)
+        ax5.set_title('Inflation Rate Timeline with Economic Zones', fontsize=14)
+        ax5.legend(loc='upper right')
+        ax5.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(filename, dpi=150, bbox_inches='tight')
+        print(f"✅ Detailed plot saved to: {filename}")
 
 
 # ============================================================================
@@ -536,10 +638,13 @@ def run_demo():
     # Строим графики
     print()
     sim.plot_results('mmo_economy_simulation.png')
+    sim.plot_detailed_analysis('mmo_economy_detailed.png')
 
     print()
     print("=" * 80)
     print("✅ Simulation complete!")
+    print("   - Basic plots: mmo_economy_simulation.png")
+    print("   - Detailed analysis: mmo_economy_detailed.png")
     print("=" * 80)
 
 
