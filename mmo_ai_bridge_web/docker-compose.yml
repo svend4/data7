@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  mmo-ai-bridge:
+    build: .
+    container_name: mmo-ai-bridge
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./mmo_ai_bridge_v05.py:/app/mmo_ai_bridge_v05.py:ro
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_PATH=/app/data/mmo_ai_bridge.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  default:
+    name: mmo-ai-bridge-network

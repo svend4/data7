@@ -1,0 +1,263 @@
+# Prometheus Alert Rules for Meta-Orchestrator Switchboard
+#
+# These rules define conditions that trigger alerts for critical system issues.
+
+groups:
+  # ==========================================================================
+  # Application Availability & Health
+  # ==========================================================================
+  - name: application_availability
+    interval: 30s
+    rules:
+      - alert: BackendDown
+        expr: up{job="switchboard-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Backend application is down"
+          description: "Switchboard backend has been unavailable for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          (sum(rate(http_requests_total{status_code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High HTTP error rate detected"
+          description: "Backend is returning {{ $value | humanizePercentage }} 5xx errors."
+
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile response time is {{ $value | humanizeDuration }} (threshold: 1s)."
+
+  # ==========================================================================
+  # Database Health
+  # ==========================================================================
+  - name: database_health
+    interval: 30s
+    rules:
+      - alert: DatabaseDown
+        expr: up{job="postgresql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "Database has been unavailable for more than 1 minute."
+
+      - alert: HighDatabaseConnections
+        expr: |
+          (database_connections{state="active"} / database_connections{state="max"}) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High database connection usage"
+          description: "Database is using {{ $value | humanizePercentage }} of available connections."
+
+      - alert: DatabaseConnectionExhaustion
+        expr: |
+          (database_connections{state="active"} / database_connections{state="max"}) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "Database is using {{ $value | humanizePercentage }} of available connections."
+
+  # ==========================================================================
+  # Cache Health
+  # ==========================================================================
+  - name: cache_health
+    interval: 30s
+    rules:
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis cache is down"
+          description: "Redis has been unavailable for more than 2 minutes."
+
+      - alert: LowCacheHitRatio
+        expr: cache_hit_ratio < 0.50
+        for: 10m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Low cache hit ratio"
+          description: "Cache hit ratio is {{ $value | humanizePercentage }} (threshold: 50%)."
+
+  # ==========================================================================
+  # Business Metrics - Tasks
+  # ==========================================================================
+  - name: task_metrics
+    interval: 30s
+    rules:
+      - alert: HighPendingTasksQueue
+        expr: sum(pending_tasks_gauge) > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: tasks
+        annotations:
+          summary: "High number of pending tasks"
+          description: "There are {{ $value }} pending tasks in queue."
+
+      - alert: TaskQueueStalled
+        expr: rate(task_operations_total{operation="completed"}[10m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: tasks
+        annotations:
+          summary: "Task queue appears stalled"
+          description: "No tasks have completed in the last 15 minutes."
+
+      - alert: HighTaskFailureRate
+        expr: |
+          (sum(rate(task_operations_total{status="failed"}[5m])) / sum(rate(task_operations_total[5m]))) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          component: tasks
+        annotations:
+          summary: "High task failure rate"
+          description: "Task failure rate is {{ $value | humanizePercentage }} (threshold: 20%)."
+
+  # ==========================================================================
+  # Business Metrics - Agents
+  # ==========================================================================
+  - name: agent_metrics
+    interval: 30s
+    rules:
+      - alert: NoActiveAgents
+        expr: sum(active_agents_gauge{status=~"idle|busy"}) == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: agents
+        annotations:
+          summary: "No active agents available"
+          description: "There are no active agents to process tasks."
+
+      - alert: HighAgentErrorRate
+        expr: |
+          (sum(rate(agent_operations_total{status="error"}[5m])) / sum(rate(agent_operations_total[5m]))) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: agents
+        annotations:
+          summary: "High agent error rate"
+          description: "Agent error rate is {{ $value | humanizePercentage }} (threshold: 10%)."
+
+  # ==========================================================================
+  # Business Metrics - Alerts
+  # ==========================================================================
+  - name: alert_metrics
+    interval: 30s
+    rules:
+      - alert: HighCriticalAlertsCount
+        expr: sum(active_alerts_gauge{severity="critical", status="active"}) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: alerts
+        annotations:
+          summary: "High number of critical alerts"
+          description: "There are {{ $value }} active critical alerts."
+
+      - alert: LongAlertAcknowledgmentTime
+        expr: |
+          histogram_quantile(0.95, rate(alert_acknowledgment_duration_seconds_bucket{severity="critical"}[10m])) > 300
+        for: 10m
+        labels:
+          severity: warning
+          component: alerts
+        annotations:
+          summary: "Critical alerts taking too long to acknowledge"
+          description: "95th percentile time to acknowledge critical alerts is {{ $value | humanizeDuration }}."
+
+  # ==========================================================================
+  # System Resources
+  # ==========================================================================
+  - name: system_resources
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value | humanize }}% on {{ $labels.instance }}."
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value | humanize }}% on {{ $labels.instance }}."
+
+      - alert: DiskSpaceLow
+        expr: |
+          (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Low disk space"
+          description: "Disk usage is {{ $value | humanize }}% on {{ $labels.instance }}:{{ $labels.mountpoint }}."
+
+  # ==========================================================================
+  # WebSocket Connections
+  # ==========================================================================
+  - name: websocket_metrics
+    interval: 30s
+    rules:
+      - alert: HighWebSocketConnections
+        expr: sum(websocket_connections_gauge) > 10000
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "High number of WebSocket connections"
+          description: "There are {{ $value }} active WebSocket connections."
+
+      - alert: WebSocketConnectionSpike
+        expr: |
+          rate(websocket_connections_gauge[5m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "WebSocket connection spike detected"
+          description: "WebSocket connections are increasing rapidly."

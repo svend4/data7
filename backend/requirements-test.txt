@@ -1,0 +1,35 @@
+# Testing dependencies for Meta-Orchestrator Switchboard
+
+# Test framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+pytest-xdist==3.5.0  # Parallel test execution
+
+# HTTP testing
+httpx==0.25.2
+pytest-httpx==0.26.0
+
+# Database testing
+pytest-postgresql==5.0.0
+faker==22.0.0  # Test data generation
+factory-boy==3.3.0  # Test factories
+
+# Mocking
+responses==0.24.1
+freezegun==1.4.0  # Time mocking
+
+# Code quality
+black==23.12.1
+isort==5.13.2
+flake8==7.0.0
+mypy==1.7.1
+bandit==1.7.6  # Security linting
+safety==2.3.5  # Dependency vulnerability checking
+
+# Load testing
+locust==2.20.0
+
+# Coverage reporting
+coverage[toml]==7.4.0
